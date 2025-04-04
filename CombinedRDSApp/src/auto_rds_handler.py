@@ -92,15 +92,25 @@ class AutoRDSHandler:
                 return False # Blacklisted
 
             is_whitelisted = artist_name_upper in artist_whitelist
-            if not is_whitelisted:
-                # Apply 'R' rule only if not whitelisted
-                if not artist_name_upper.startswith('R'):
-                    logger.debug(f"Artist '{artist_name}' does not start with 'R' and is not whitelisted.")
-                    return False # Fails 'R' rule and not whitelisted
+            passes_r_rule_or_whitelist = is_whitelisted or artist_name_upper.startswith('R')
+
+            if not passes_r_rule_or_whitelist:
+                # Artist fails 'R' rule AND is not whitelisted.
+                # Check if the message *requires* the artist placeholder.
+                if "{artist}" in message_text:
+                    logger.debug(f"Artist '{artist_name}' fails R-rule/whitelist, and message '{message_text}' uses {{artist}}. Skipping message.")
+                    return False # Skip this specific message
                 else:
-                    logger.debug(f"Artist '{artist_name}' starts with 'R'.")
-            else:
-                logger.debug(f"Artist '{artist_name}' is whitelisted.")
+                    # Artist fails rule, but message doesn't need artist. Continue checks.
+                    logger.debug(f"Artist '{artist_name}' fails R-rule/whitelist, but message '{message_text}' doesn't use {{artist}}. Continuing checks.")
+            elif is_whitelisted:
+                 logger.debug(f"Artist '{artist_name}' is whitelisted.")
+            elif artist_name_upper.startswith('R'):
+                 logger.debug(f"Artist '{artist_name}' starts with 'R'.")
+            # If artist_name is empty, the R-rule/whitelist check is skipped implicitly.
+
+        # If we reach here, the artist filter (if applicable to this message) passed.
+        # Continue with other checks.
         # --- End Artist Filtering ---
 
         # Placeholder Checks
