@@ -604,34 +604,46 @@ class IntroLoaderHandler:
 
             return entries
         except Exception as e:
-            logger.exception(f"Error reading or parsing missing artists log: {e}")
-            return [] # Return empty list on error
+             logger.exception(f"Error reading or parsing missing artists log: {e}")
+             return [] # Return empty list on error
 
-    def delete_missing_artist_entry(self, raw_line_to_delete):
-        """Removes a specific line from the missing artists log file."""
+    def delete_missing_artist_entry(self, raw_lines_to_delete):
+        """Removes specific lines from the missing artists log file."""
+        if not isinstance(raw_lines_to_delete, list):
+            # Handle case where a single string might still be passed (defensive)
+            raw_lines_to_delete = [raw_lines_to_delete]
+            logger.warning("delete_missing_artist_entry called with a single string, converting to list.")
+
         if not os.path.exists(MISSING_ARTIST_LOG):
-            logger.error("Cannot delete entry: Missing artists log file not found.")
+            logger.error("Cannot delete entries: Missing artists log file not found.")
             return False
 
         try:
             with open(MISSING_ARTIST_LOG, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
 
-            # Create a new list excluding the line to delete
-            new_lines = [line for line in lines if line.strip() != raw_line_to_delete.strip()]
+            # Create a set of lines to delete for efficient lookup
+            lines_to_delete_set = {line.strip() for line in raw_lines_to_delete}
 
-            if len(new_lines) == len(lines):
-                logger.warning(f"Could not find line to delete in missing artists log: {raw_line_to_delete}")
-                return False # Line wasn't found
+            # Create a new list excluding the lines to delete
+            new_lines = [line for line in lines if line.strip() not in lines_to_delete_set]
+
+            num_deleted = len(lines) - len(new_lines)
+
+            if num_deleted == 0:
+                logger.warning(f"Could not find any of the specified lines to delete in missing artists log.")
+                # Consider returning True if the goal is achieved (lines are gone), or False if no action was taken.
+                # Returning True seems more appropriate as the state matches the desired outcome.
+                return True # Lines weren't found, but they are not in the file.
 
             # Write the modified content back
             with open(MISSING_ARTIST_LOG, 'w', encoding='utf-8') as f:
                 f.writelines(new_lines)
 
-            logger.info(f"Successfully deleted entry from missing artists log: {raw_line_to_delete}")
+            logger.info(f"Successfully deleted {num_deleted} entr{'y' if num_deleted == 1 else 'ies'} from missing artists log.")
             return True
         except Exception as e:
-            logger.exception(f"Error deleting entry from missing artists log: {e}")
+            logger.exception(f"Error deleting entries from missing artists log: {e}")
             return False
 
 
