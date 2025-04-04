@@ -6,7 +6,8 @@ import threading
 import queue
 import os
 from tkinter import messagebox # Import messagebox explicitly
-from ttkthemes import ThemedTk
+from ttkthemes import ThemedTk # Restore ThemedTk
+# from tkinterdnd2 import TkinterDnD # Remove DnD import - hack didn't work
 # from PIL import Image # For loading the icon - Removed
 # import pystray # For system tray functionality - Removed
 
@@ -18,6 +19,8 @@ from intro_loader_handler import IntroLoaderHandler
 from ui_config_window import ConfigWindow
 from ui_missing_artists_window import MissingArtistsWindow
 from ui_options_window import OptionsWindow
+# Import the new playlist editor window
+from ui_playlist_editor_window import PlaylistEditorWindow
 # from utils import format_timestamp # Not currently used
 
 # --- Constants ---
@@ -57,10 +60,11 @@ def setup_logging():
     # logger.addHandler(console_handler)
 
 # --- Main Application Class ---
-class MainApplication(ThemedTk):
+class MainApplication(ThemedTk): # Restore ThemedTk base class
     def __init__(self):
-        super().__init__(theme="arc") # Using 'arc' theme from ttkthemes as an example
+        super().__init__(theme="arc") # Restore theme argument
         self.title(APP_NAME)
+        # Remove DnD initialization from here
         # Don't start hidden - remove self.withdraw()
         # self.withdraw()
         # Set geometry after withdraw/deiconify might be better
@@ -120,6 +124,9 @@ class MainApplication(ThemedTk):
 
         options_button = ttk.Button(top_frame, text="Options", command=self.open_options)
         options_button.pack(side=tk.LEFT, padx=5)
+
+        playlist_editor_button = ttk.Button(top_frame, text="Mini Playlist Editor", command=self.open_playlist_editor)
+        playlist_editor_button.pack(side=tk.LEFT, padx=5)
 
         # --- Log Display Area (using PanedWindow for resizing) ---
         log_pane = ttk.PanedWindow(main_frame, orient=tk.VERTICAL)
@@ -276,6 +283,19 @@ class MainApplication(ThemedTk):
             logging.exception("Error opening options window.")
             messagebox.showerror("Error", f"Could not open options window:\n{e}")
 
+    def open_playlist_editor(self):
+        """Opens the mini playlist editor window."""
+        logging.debug("Mini Playlist Editor button clicked.")
+        # messagebox.showinfo("Coming Soon", "Playlist Editor functionality is under development.")
+        try:
+            # Pass self (parent window) and the config manager instance
+            playlist_win = PlaylistEditorWindow(self, self.config) # Use the actual class
+            playlist_win.wait_window() # Wait for the editor window to close
+            logging.debug("Playlist Editor window closed.")
+        except Exception as e:
+            logging.exception("Error opening playlist editor window.")
+            messagebox.showerror("Error", f"Could not open playlist editor window:\n{e}")
+
 
     def on_closing(self):
         """Handles application closing gracefully."""
@@ -358,5 +378,7 @@ class MainApplication(ThemedTk):
 # --- Main Execution ---
 if __name__ == "__main__":
     setup_logging()
+    # Removed TkinterDnD Initialization Hack
+
     app = MainApplication()
     app.mainloop()

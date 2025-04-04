@@ -130,6 +130,33 @@ class ConfigManager:
         else:
             logging.error("Attempted to set blacklist with non-list data.")
 
+    # --- Generic Settings Methods ---
+    def get_setting(self, key, default=None):
+        """
+        Retrieves a setting value for the given key.
+
+        Args:
+            key (str): The key of the setting to retrieve.
+            default: The value to return if the key is not found. Defaults to None.
+
+        Returns:
+            The value of the setting, or the default value if not found.
+        """
+        return self.config.get(key, default)
+
+    def update_setting(self, key, value):
+        """
+        Updates or adds a setting with the given key and value, then saves the config.
+
+        Args:
+            key (str): The key of the setting to update or add.
+            value: The value to set for the key.
+        """
+        self.config[key] = value
+        logging.debug(f"Updated setting '{key}' to '{value}'. Saving config.")
+        self.save_config() # Save after updating a setting
+
+
 # Example usage (for testing)
 if __name__ == "__main__":
     import logging
@@ -170,6 +197,20 @@ if __name__ == "__main__":
     assert manager2.get_messages()[0]["Text"] == "Test Message"
     assert manager2.get_whitelist() == ["Artist A"]
     assert manager2.get_blacklist() == ["Artist B"]
+
+    # Test generic settings
+    print("\n--- Testing Generic Settings ---")
+    assert manager2.get_setting("non_existent_key") is None
+    assert manager2.get_setting("non_existent_key", default="default_val") == "default_val"
+    manager2.update_setting("new_setting", {"a": 1, "b": 2})
+    assert manager2.get_setting("new_setting") == {"a": 1, "b": 2}
+
+    # Test reloading generic settings
+    print("\n--- Testing Reload Generic Settings ---")
+    manager_reloaded_generic = ConfigManager(config_path=test_config_path)
+    assert manager_reloaded_generic.get_setting("new_setting") == {"a": 1, "b": 2}
+    assert manager_reloaded_generic.get_messages()[0]["Text"] == "Test Message" # Ensure old settings still exist
+
 
     # Test loading corrupted file
     print("\n--- Testing Load (Corrupted) ---")

@@ -1,0 +1,99 @@
+{
+    "Messages": [
+        {
+            "Text": "{artist}",
+            "Enabled": true,
+            "Message Time": 20,
+            "Scheduled": {
+                "Enabled": false,
+                "Days": [],
+                "Times": []
+            }
+        },
+        {
+            "Text": "Lizchus that Ahron Meir should find a shidduch",
+            "Enabled": true,
+            "Message Time": 20,
+            "Scheduled": {
+                "Enabled": true,
+                "Days": [
+                    "Sunday",
+                    "Monday",
+                    "Tuesday",
+                    "Wednesday",
+                    "Thursday",
+                    "Friday"
+                ],
+                "Times": []
+            }
+        },
+        {
+            "Text": "Bechol koreinu eilav",
+            "Enabled": false,
+            "Message Time": 2,
+            "Scheduled": {
+                "Enabled": false,
+                "Days": [],
+                "Times": []
+            }
+        },
+        {
+            "Text": "Ein Od Milvado",
+            "Enabled": true,
+            "Message Time": 5,
+            "Scheduled": {
+                "Enabled": true,
+                "Days": [
+                    "Monday"
+                ],
+                "Times": []
+            }
+        },
+        {
+            "Text": "Ein shum yiush baolam klal",
+            "Enabled": false,
+            "Message Time": 2,
+            "Scheduled": {
+                "Enabled": true,
+                "Days": [
+                    "Sunday",
+                    "Thursday"
+                ],
+                "Times": []
+            }
+        },
+        {
+            "Text": "Learning today sponsored by Yitz Auto Body 732 370 3390",
+            "Enabled": true,
+            "Message Time": 20,
+            "Scheduled": {
+                "Enabled": true,
+                "Days": [
+                    "Thursday"
+                ],
+                "Times": []
+            }
+        },
+        {
+            "Text": "Thank you Reb Moishe",
+            "Enabled": true,
+            "Message Time": 15,
+            "Scheduled": {
+                "Enabled": true,
+                "Days": [
+                    "Thursday"
+                ],
+                "Times": []
+            }
+        }
+    ],
+    "Whitelist": [],
+    "Blacklist": [
+        "R' Michel Twersky",
+        "R. Michel Twerski"
+    ],
+    "playlist_presets": {
+        "Station ID": "G:\\Misc\\Radio Info\\Station ID Playlist.m3u8",
+        "Sponsorships List": "G:\\Misc\\Sponsorships\\Sponsorships List.m3u8"
+    }
+}
