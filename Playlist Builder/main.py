@@ -18,6 +18,7 @@ from metadata_utils import load_audio_metadata, save_audio_metadata
 import subprocess
 from common_components import (APP_NAME, SETTINGS_FILE, DEFAULT_COLUMNS, AVAILABLE_COLUMNS, 
                              M3U_ENCODING, format_duration, open_file_location, ColumnChooserDialog)
+import tkinterdnd2 as tkdnd
 
 def get_metadata(filepath):
     # Deprecated: Use load_audio_metadata from metadata_utils.py
@@ -62,14 +63,19 @@ class PlaylistTab(ttk.Frame):
         self.find_entry = ttk.Entry(self.toolbar, textvariable=self.find_var, width=30)
         self.find_entry.pack(side="left", padx=(0, 5))
         self.find_entry.bind('<Return>', self.find_next)
-        self.clear_find_button = ttk.Button(self.toolbar, text="Clear", command=self.clear_find, width=6)
-        self.clear_find_button.pack(side="left")
+        self.clear_find_button2 = ttk.Button(self.toolbar, text="Clear", command=lambda: self.find_var.set(""), width=6)
+        self.clear_find_button2.pack(side="left")
         self.find_prev_button = ttk.Button(self.toolbar, text="◀", width=2, command=lambda: self.find_next(reverse=True))
         self.find_prev_button.pack(side="left", padx=(2,0))
         self.find_next_button = ttk.Button(self.toolbar, text="▶", width=2, command=self.find_next)
         self.find_next_button.pack(side="left", padx=(0,5))
         self._find_matches = []
         self._find_index = -1
+
+        # --- Find results count label ---
+        self.find_count_var = tk.StringVar(value="")
+        self.find_count_label = ttk.Label(self.toolbar, textvariable=self.find_count_var, width=14, anchor="w")
+        self.find_count_label.pack(side="left", padx=(5, 0))
 
         # Filter moved to menu (View menu)
         self.filter_frame = None
@@ -113,6 +119,10 @@ class PlaylistTab(ttk.Frame):
         # Optionally, ensure 'found' tag is default
         self.tree.tag_configure("found", foreground="black")
 
+        # --- DND hover highlight ---
+        self._dnd_hover_iid = None
+        self.tree.tag_configure("dnd_hover", background="#cce6ff")
+
         # --- Treeview Bindings ---
         self.tree.bind("<Double-1>", self.on_double_click)
         self.tree.bind("<Button-3>", self.show_context_menu) # Right-click
@@ -141,6 +151,27 @@ class PlaylistTab(ttk.Frame):
         self.context_menu.add_separator()
         self.context_menu.add_command(label="Remove From Playlist", command=self.context_remove)
         self.context_menu.add_command(label="Paste After", command=self.paste_after_selected)
+
+        # Enable drag-and-drop for reordering playlist tracks in the treeview
+        self.tree.bind('<ButtonPress-1>', self._on_tree_press)
+        self.tree.bind('<B1-Motion>', self._on_tree_drag)
+        self.tree.bind('<ButtonRelease-1>', self._on_tree_release)
+        self._dragged_iid = None
+        self._dragged_index = None
+
+        # Enable drag-and-drop from other programs (files)
+        self._dnd_enabled = False
+        try:
+            import tkinterdnd2 as tkdnd
+            # Use the root window from the app, which is a TkinterDnD.Tk instance
+            root = self.winfo_toplevel()
+            self.tree.drop_target_register(tkdnd.DND_FILES)
+            self.tree.dnd_bind('<<Drop>>', self._on_external_drop)
+            self.tree.dnd_bind('<<DropPosition>>', self._on_external_dragover)
+            self._dnd_enabled = True
+            print("[DND] External drag-and-drop enabled.")
+        except (ImportError, Exception) as e:
+            print(f"[WARN] Drag-and-drop from outside is disabled: {e}")
 
     def context_rename_tab(self):
         new_name = simpledialog.askstring("Rename Tab", "Enter new tab name:", initialvalue=self.tab_display_name, parent=self)
@@ -748,11 +779,15 @@ class PlaylistTab(ttk.Frame):
             new_tracks = []
             for line in lines:
                 line = line.strip()
+                # Ignore all comment lines (including #EXTM3U and #EXTINF)
                 if not line or line.startswith('#'):
                     continue
+                # Only treat as a track if the path exists and is an audio file
                 abs_path = os.path.abspath(os.path.join(os.path.dirname(filepath), line)) if not os.path.isabs(line) else line
                 meta = load_audio_metadata(abs_path)
-                new_tracks.append(meta)
+                # Only add if metadata indicates a valid audio file (exists and has duration or title)
+                if meta.get('exists') and (meta.get('duration') or meta.get('title')):
+                    new_tracks.append(meta)
             self._track_data = new_tracks
             self.refresh_display()
             self.is_dirty = False
@@ -850,35 +885,31 @@ class PlaylistTab(ttk.Frame):
             self.update_tab_title()
 
     def find_next(self, event=None, reverse=False):
-        """Find the next (or previous if reverse) occurrence of the search string in the playlist."""
-        find_term = self.find_var.get().lower()
-        if not find_term:
-            self.set_status("Enter text to find.")
+        query = self.find_entry.get().strip().lower()
+        if not query:
+            self.app.set_status("Enter search text.")
+            self.find_count_var.set("")
             return
-        # Build a list of matching iids if not already built or if search changed
-        if not hasattr(self, '_last_find_term') or self._last_find_term != find_term:
-            self._find_matches = []
-            for iid, track in self._iid_map.items():
-                for col in self.visible_columns:
-                    val = self.get_formatted_value(track, col)
-                    if find_term in str(val).lower():
-                        self._find_matches.append(iid)
-                        break
-            self._find_index = -1
-            self._last_find_term = find_term
-        if not self._find_matches:
-            self.set_status(f"No matches for '{find_term}'.")
-            self.tree.selection_remove(self.tree.selection())
+        matches = []
+        for iid in self.tree.get_children():
+            values = self.tree.item(iid, 'values')
+            if any(query in str(v).lower() for v in values):
+                matches.append(iid)
+        if not matches:
+            self.app.set_status("No matches found.")
+            self.find_count_var.set("0 found")
             return
-        # Move to next/prev match
-        if reverse:
-            self._find_index = (self._find_index - 1) % len(self._find_matches)
+        # Cycle through matches
+        current = self.tree.selection()
+        if current and current[0] in matches:
+            idx = matches.index(current[0])
+            next_idx = (idx - 1) % len(matches) if reverse else (idx + 1) % len(matches)
         else:
-            self._find_index = (self._find_index + 1) % len(self._find_matches)
-        iid = self._find_matches[self._find_index]
-        self.tree.selection_set(iid)
-        self.tree.see(iid)
-        self.set_status(f"Match {self._find_index+1} of {len(self._find_matches)} for '{find_term}'.")
+            next_idx = 0
+        self.tree.selection_set(matches[next_idx])
+        self.tree.see(matches[next_idx])
+        self.app.set_status(f"Found {len(matches)} match(es). Showing {next_idx+1} of {len(matches)}.")
+        self.find_count_var.set(f"{len(matches)} found")
 
     def clear_find(self):
         self.find_var.set("")
@@ -912,6 +943,111 @@ class PlaylistTab(ttk.Frame):
         self.tree.selection_set(self.tree.get_children()[insert_index - len(self.app.clipboard):insert_index])
         self.tree.see(self.tree.get_children()[insert_index - 1])
         self.app.set_status(f"Pasted {len(self.app.clipboard)} track(s) after selection.")
+
+    def _on_tree_press(self, event):
+        iid = self.tree.identify_row(event.y)
+        if iid:
+            self._dragged_iid = iid
+            self._dragged_index = self.tree.index(iid)
+        else:
+            self._dragged_iid = None
+            self._dragged_index = None
+
+    def _on_tree_drag(self, event):
+        if self._dragged_iid is None:
+            return
+        y = event.y
+        target_iid = self.tree.identify_row(y)
+        if target_iid and target_iid != self._dragged_iid:
+            target_index = self.tree.index(target_iid)
+            self.tree.move(self._dragged_iid, '', target_index)
+            # Only update visuals during drag; update data on release
+
+    def _on_tree_release(self, event):
+        if self._dragged_iid is not None:
+            # On release, update _track_data to match the new Treeview order
+            new_order = []
+            iid_to_track = self._iid_map.copy()
+            # Save the unique identity of selected tracks
+            selected_iids = self.tree.selection()
+            selected_keys = set()
+            for iid in selected_iids:
+                track = iid_to_track.get(iid)
+                if track is not None:
+                    # Use path as unique key if available, else id()
+                    key = track.get('path') if track.get('path') else id(track)
+                    selected_keys.add(key)
+            for iid in self.tree.get_children(''):
+                if iid in iid_to_track:
+                    new_order.append(iid_to_track[iid])
+            self._track_data = new_order
+            self.refresh_display(keep_selection=False)
+            # Restore selection after refresh
+            if selected_keys:
+                new_selection = []
+                for iid, track in self._iid_map.items():
+                    key = track.get('path') if track.get('path') else id(track)
+                    if key in selected_keys:
+                        new_selection.append(iid)
+                if new_selection:
+                    self.tree.selection_set(new_selection)
+                    self.tree.see(new_selection[0])
+            self.mark_dirty()
+        self._dragged_iid = None
+        self._dragged_index = None
+
+    def _on_external_drop(self, event):
+        root = self.winfo_toplevel()
+        try:
+            files = root.tk.splitlist(event.data)
+            # Identify drop target row
+            y = event.y_root - self.tree.winfo_rooty()
+            target_iid = self.tree.identify_row(y)
+            if target_iid:
+                insert_index = self.tree.index(target_iid) + 1
+            else:
+                insert_index = len(self._track_data)
+            new_tracks = []
+            for file in files:
+                if os.path.isfile(file):
+                    meta = load_audio_metadata(file)
+                    new_tracks.append(meta)
+            # Insert tracks at the correct index in _track_data
+            for i, track in enumerate(new_tracks):
+                self._track_data.insert(insert_index + i, track)
+            self.refresh_display(keep_selection=False)
+            self.mark_dirty()
+            # Remove hover highlight
+            if self._dnd_hover_iid:
+                tags = list(self.tree.item(self._dnd_hover_iid, 'tags'))
+                if 'dnd_hover' in tags:
+                    tags.remove('dnd_hover')
+                    self.tree.item(self._dnd_hover_iid, tags=tuple(tags))
+                self._dnd_hover_iid = None
+            print(f"[DND] Added files from drag-and-drop: {files} at index {insert_index}")
+        except Exception as e:
+            print(f"[DND][ERROR] External drop failed: {e}")
+
+    def _on_external_dragover(self, event):
+        y = event.y_root - self.tree.winfo_rooty()
+        iid = self.tree.identify_row(y)
+        # Remove highlight from previous
+        if self._dnd_hover_iid and self._dnd_hover_iid != iid:
+            tags = list(self.tree.item(self._dnd_hover_iid, 'tags'))
+            if 'dnd_hover' in tags:
+                tags.remove('dnd_hover')
+                self.tree.item(self._dnd_hover_iid, tags=tuple(tags))
+        # Add highlight to new
+        if iid and iid != self._dnd_hover_iid:
+            tags = list(self.tree.item(iid, 'tags'))
+            if 'dnd_hover' not in tags:
+                tags.append('dnd_hover')
+                self.tree.item(iid, tags=tuple(tags))
+            self._dnd_hover_iid = iid
+        elif not iid:
+            self._dnd_hover_iid = None
+        return event.action
+
 
 # --- Dialog Windows ---
 
@@ -1000,6 +1136,8 @@ class MetadataEditDialog(simpledialog.Dialog):
 # --- Main Execution ---
 
 if __name__ == "__main__":
+    root = tkdnd.TkinterDnD.Tk()
     from playlist_manager_app import PlaylistManagerApp
-    app = PlaylistManagerApp()
-    app.mainloop()
+    app = PlaylistManagerApp(master=root)
+    app.pack(fill="both", expand=True)
+    root.mainloop()

@@ -22,11 +22,13 @@ import main # Import main module for PlaylistTab class
 # Import PlaylistTab at the module level to avoid circular imports
 PlaylistTab = main.PlaylistTab
 
-class PlaylistManagerApp(tk.Tk):
-    def __init__(self):
-        super().__init__()
-        self.title(APP_NAME)
-        self.geometry("1000x700")
+class PlaylistManagerApp(tk.Frame):
+    def __init__(self, master=None):
+        super().__init__(master)
+        self.master = master
+        if master is not None:
+            master.title(APP_NAME)
+            master.geometry("1000x700")
         self.current_settings = {
             "columns": DEFAULT_COLUMNS,
             "profiles": {},
@@ -40,8 +42,66 @@ class PlaylistManagerApp(tk.Tk):
         self.clipboard = [] # Simple list to hold track data dictionaries for copy/paste
 
         # --- UI Elements ---
-        self.main_menu = tk.Menu(self)
-        self.config(menu=self.main_menu)
+        # Set modern, slightly larger font for the app
+        default_font = tkfont.nametofont("TkDefaultFont")
+        default_font.configure(size=12, family="Segoe UI")
+        self.option_add("*Font", default_font)
+        self.option_add("*TCombobox*Listbox.font", default_font)
+        self.option_add("*Treeview*Font", default_font)
+        # Use a separate font object for headings/tabs
+        heading_font = default_font.copy()
+        heading_font.configure(weight="bold")
+        self.option_add("*Treeview*Heading.Font", heading_font)
+        self.option_add("*Menu.Font", default_font)
+        self.option_add("*Button.Font", default_font)
+        self.option_add("*Label.Font", default_font)
+        self.option_add("*Entry.Font", default_font)
+        self.option_add("*TEntry.Font", default_font)
+        self.option_add("*TNotebook.Tab.Font", heading_font)
+
+
+        # Modern theme
+        style = ttk.Style(self)
+        style.theme_use("clam")
+        # SMALL font/padding for normal (unselected) tabs
+        normal_tab_font = heading_font.copy()
+        normal_tab_font.configure(size=9)
+        #make the tabs look smaller with less padding
+        style.configure("TNotebook.Tab", padding=[5, 2], font=normal_tab_font, background="#e0e0eb", foreground="#222")
+
+        # LARGE font/padding for SELECTED tab (should look like previous unselected tabs)
+        selected_tab_font = heading_font.copy()
+        selected_tab_font.configure(size=45, weight="bold")
+
+
+        style.map("TNotebook.Tab",
+                  background=[("selected", "#f0f0f7"), ("!selected", "#e0e0eb")],
+                  foreground=[("selected", "#222"), ("!selected", "#222")],
+                  font=[("selected", selected_tab_font), ("!selected", normal_tab_font)])
+        style.configure("TNotebook", background="#f0f0f7")
+        style.configure("Treeview", rowheight=28, font=default_font, fieldbackground="#fff", background="#fff", height=22)
+        style.configure("Treeview.Heading", font=heading_font, background="#e0e0eb", foreground="#222")
+        style.configure("TLabel", font=default_font)
+        style.configure("TButton", font=default_font)
+        style.configure("TEntry", font=default_font)
+        style.map("TButton", background=[("active", "#e0e0eb")])
+
+
+        # --- Main Area ---
+        self.notebook = ttk.Notebook(self)
+        self.notebook.enable_traversal()
+        self.notebook.bind("<ButtonPress-1>", self._on_tab_press)
+        self.notebook.bind("<B1-Motion>", self._on_tab_drag)
+        self.notebook.bind("<ButtonRelease-1>", self._on_tab_release)
+        self._dragged_tab_index = None
+        self._dragged_tab_id = None
+        self.notebook.pack(expand=True, fill="both", side="top", padx=5, pady=5)
+        self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_change)
+        self.notebook.bind("<Button-3>", self._on_tab_right_click_context)
+
+        # --- Restore Menu Bar (moved after font/theme setup to ensure it appears) ---
+        self.main_menu = tk.Menu(self.master)
+        self.master.config(menu=self.main_menu)
 
         # File Menu
         self.file_menu = tk.Menu(self.main_menu, tearoff=0)
@@ -77,12 +137,6 @@ class PlaylistManagerApp(tk.Tk):
         self.view_menu.add_command(label="Refresh Current Playlist View", command=self.refresh_current_tab_view)
         self.view_menu.add_separator()
         self.view_menu.add_command(label="Show Filter Bar", command=self.toggle_filter_bar)
-
-        # --- Main Area ---
-        self.notebook = ttk.Notebook(self)
-        self.notebook.pack(expand=True, fill="both", side="top", padx=5, pady=5)
-        self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_change)
-        self.notebook.bind("<Button-3>", self.on_tab_right_click)
 
         # --- Pre-listen Controls ---
         self.prelisten_frame = ttk.Frame(self)
@@ -133,7 +187,8 @@ class PlaylistManagerApp(tk.Tk):
                 self.add_new_tab("Untitled Playlist")
 
         # --- Protocol Handlers ---
-        self.protocol("WM_DELETE_WINDOW", self.quit_app)
+        if master is not None:
+            self.master.protocol("WM_DELETE_WINDOW", self.quit_app)
 
         # --- Pygame Mixer Init ---
         self._auto_init_audio()
@@ -401,7 +456,7 @@ class PlaylistManagerApp(tk.Tk):
 
         # 4. Destroy window
         if not startup:
-            self.destroy()
+            self.master.destroy()
         # If called during __init__, prevent further initialization
         if startup:
             raise SystemExit
@@ -719,12 +774,75 @@ class PlaylistManagerApp(tk.Tk):
         self.save_settings()
 
         # 4. Destroy window
-        self.destroy()
+        self.master.destroy()
 
     def toggle_filter_bar(self):
         tab = self.get_current_tab()
         if tab:
             tab.show_filter_bar()
+
+    def _update_tab_styles(self, event=None):
+        # No-op: ttk.Notebook does not support per-tab font/padding. Style is handled globally above.
+        pass
+
+    def _on_tab_right_click_context(self, event):
+        """Show context menu for renaming or deleting tab on right-click of notebook tab."""
+        x, y = event.x, event.y
+        elem = self.notebook.identify(x, y)
+        if elem == 'label':
+            tab_index = self.notebook.index(f"@{x},{y}")
+            tab_widget_id = self.notebook.tabs()[tab_index]
+            menu = tk.Menu(self, tearoff=0)
+            menu.add_command(label="Rename Tab", command=lambda: self.rename_notebook_tab(tab_index))
+            menu.add_command(label="Delete Tab", command=lambda: self._delete_tab(tab_widget_id))
+            menu.tk_popup(event.x_root, event.y_root)
+
+    def _delete_tab(self, tab_widget_id):
+        self.notebook.forget(tab_widget_id)
+
+    def on_tab_right_click(self, event):
+        """Show context menu for renaming tab on right-click of notebook tab."""
+        x, y = event.x, event.y
+        elem = self.notebook.identify(event.x, event.y)
+        if elem == 'label':
+            tab_id = self.notebook.index(f"@{x},{y}")
+            menu = tk.Menu(self, tearoff=0)
+            menu.add_command(label="Rename Tab", command=lambda: self.rename_notebook_tab(tab_id))
+            menu.tk_popup(event.x_root, event.y_root)
+
+    def rename_notebook_tab(self, tab_id):
+        """Prompt user to rename the tab at tab_id."""
+        current_title = self.notebook.tab(tab_id, "text")
+        new_title = simpledialog.askstring("Rename Tab", "Enter new tab name:", initialvalue=current_title, parent=self)
+        if new_title and new_title.strip():
+            self.notebook.tab(tab_id, text=new_title.strip())
+            # Also update PlaylistTab's tab_display_name if possible
+            widget = self.nametowidget(self.notebook.tabs()[tab_id])
+            if hasattr(widget, 'tab_display_name'):
+                widget.tab_display_name = new_title.strip()
+
+    def _on_tab_press(self, event):
+        x, y = event.x, event.y
+        elem = self.notebook.identify(x, y)
+        if elem == 'label':
+            self._dragged_tab_index = self.notebook.index(f"@{x},{y}")
+            self._dragged_tab_id = self.notebook.tabs()[self._dragged_tab_index]
+        else:
+            self._dragged_tab_index = None
+            self._dragged_tab_id = None
+
+    def _on_tab_drag(self, event):
+        if self._dragged_tab_index is None:
+            return
+        x, y = event.x, event.y
+        target_index = self.notebook.index(f"@{x},{y}")
+        if target_index != self._dragged_tab_index and 0 <= target_index < len(self.notebook.tabs()):
+            self.notebook.insert(target_index, self._dragged_tab_id)
+            self._dragged_tab_index = target_index
+
+    def _on_tab_release(self, event):
+        self._dragged_tab_index = None
+        self._dragged_tab_id = None
 
     def _auto_init_audio(self):
         """Tries to initialize pygame mixer with retry logic, silently."""
@@ -755,24 +873,3 @@ class PlaylistManagerApp(tk.Tk):
 
         # Start the first attempt
         attempt_init(1)
-
-    def on_tab_right_click(self, event):
-        """Show context menu for renaming tab on right-click of notebook tab."""
-        x, y = event.x, event.y
-        elem = self.notebook.identify(event.x, event.y)
-        if elem == 'label':
-            tab_id = self.notebook.index(f"@{x},{y}")
-            menu = tk.Menu(self, tearoff=0)
-            menu.add_command(label="Rename Tab", command=lambda: self.rename_notebook_tab(tab_id))
-            menu.tk_popup(event.x_root, event.y_root)
-
-    def rename_notebook_tab(self, tab_id):
-        """Prompt user to rename the tab at tab_id."""
-        current_title = self.notebook.tab(tab_id, "text")
-        new_title = simpledialog.askstring("Rename Tab", "Enter new tab name:", initialvalue=current_title, parent=self)
-        if new_title and new_title.strip():
-            self.notebook.tab(tab_id, text=new_title.strip())
-            # Also update PlaylistTab's tab_display_name if possible
-            widget = self.nametowidget(self.notebook.tabs()[tab_id])
-            if hasattr(widget, 'tab_display_name'):
-                widget.tab_display_name = new_title.strip()
