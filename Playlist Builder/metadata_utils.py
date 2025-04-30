@@ -10,6 +10,7 @@ def load_audio_metadata(filepath):
     """
     Loads metadata from an audio file using mutagen, with robust error handling and logging.
     Returns a dict with keys: artist, title, album, genre, tracknumber, duration, bitrate, format, path, exists.
+    Always returns a valid dict, never raises ValueError or returns None, even for corrupt or unsupported files.
     """
     metadata = {
         'artist': 'Unknown Artist',
@@ -30,60 +31,60 @@ def load_audio_metadata(filepath):
         audio = None
         try:
             audio = MutagenFile(filepath, easy=True)
-        except ValueError as ve:
-            print(f"[METADATA][ERROR] ValueError in MutagenFile (easy=True): {filepath}\n{ve}")
-            metadata['format'] = "Invalid MultiSpec"
-            return metadata
         except Exception as e:
+            # Catch ALL exceptions, including ValueError, TypeError, etc.
             print(f"[METADATA][ERROR] Exception in MutagenFile (easy=True): {filepath}\n{e}")
-            traceback.print_exc()
-            metadata['format'] = "Error reading"
+            metadata['format'] = f"Invalid/Corrupt ({type(e).__name__})"
             return metadata
         if audio:
-            metadata['artist'] = ', '.join(audio.get('artist', ['Unknown Artist']))
-            metadata['title'] = ', '.join(audio.get('title', [metadata['title']]))
-            metadata['album'] = ', '.join(audio.get('album', ['Unknown Album']))
-            metadata['genre'] = ', '.join(audio.get('genre', ['Unknown Genre']))
-            tn = audio.get('tracknumber', [''])[0]
-            if '/' in tn:
-                tn = tn.split('/')[0]
-            metadata['tracknumber'] = tn
-            metadata['duration'] = audio.info.length if hasattr(audio, 'info') and hasattr(audio.info, 'length') else None
-            metadata['format'] = type(audio).__name__
-            metadata['bitrate'] = getattr(audio.info, 'bitrate', None) if hasattr(audio, 'info') else None
+            try:
+                metadata['artist'] = ', '.join(audio.get('artist', ['Unknown Artist']))
+                metadata['title'] = ', '.join(audio.get('title', [metadata['title']]))
+                metadata['album'] = ', '.join(audio.get('album', ['Unknown Album']))
+                metadata['genre'] = ', '.join(audio.get('genre', ['Unknown Genre']))
+                tn = audio.get('tracknumber', [''])[0]
+                if '/' in tn:
+                    tn = tn.split('/')[0]
+                metadata['tracknumber'] = tn
+                metadata['duration'] = audio.info.length if hasattr(audio, 'info') and hasattr(audio.info, 'length') else None
+                metadata['format'] = type(audio).__name__
+                metadata['bitrate'] = getattr(audio.info, 'bitrate', None) if hasattr(audio, 'info') else None
+            except Exception as e:
+                print(f"[METADATA][ERROR] Exception reading tags/info: {filepath}\n{e}")
+                metadata['format'] = f"TagReadError ({type(e).__name__})"
+                # Don't raise, just return what we have
+                return metadata
         else:
             # Try again without easy=True for more exotic formats
             try:
                 audio = MutagenFile(filepath)
                 if audio:
-                    duration = None
-                    if hasattr(audio, 'info') and hasattr(audio.info, 'length'):
-                        duration = audio.info.length
-                    metadata['duration'] = duration
-                    metadata['format'] = type(audio).__name__
-                    metadata['bitrate'] = getattr(audio.info, 'bitrate', None) if hasattr(audio, 'info') else None
-            except (ID3NoHeaderError, FLACNoHeaderError, MP4NoTrackError, OggVorbisHeaderError) as e:
-                print(f"[METADATA][WARN] Header error for {filepath}: {e}")
-                metadata['format'] = "Header error"
-                return metadata
-            except ValueError as ve:
-                print(f"[METADATA][ERROR] ValueError in MutagenFile (secondary attempt): {filepath}\n{ve}")
-                metadata['format'] = "Invalid MultiSpec"
-                return metadata
+                    try:
+                        duration = None
+                        if hasattr(audio, 'info') and hasattr(audio.info, 'length'):
+                            duration = audio.info.length
+                        metadata['duration'] = duration
+                        metadata['format'] = type(audio).__name__
+                        metadata['bitrate'] = getattr(audio.info, 'bitrate', None) if hasattr(audio, 'info') else None
+                    except Exception as e:
+                        print(f"[METADATA][ERROR] Exception reading info (no easy): {filepath}\n{e}")
+                        metadata['format'] = f"TagReadErrorNoEasy ({type(e).__name__})"
+                        return metadata
+                else:
+                    metadata['format'] = f"Unknown/Unsupported ({os.path.splitext(filepath)[1]})"
             except Exception as e:
-                print(f"[METADATA][ERROR] Failed to load audio file (secondary attempt): {filepath}\n{e}")
-                traceback.print_exc()
-                metadata['format'] = "Error reading"
+                print(f"[METADATA][ERROR] Exception in MutagenFile (no easy): {filepath}\n{e}")
+                metadata['format'] = f"Invalid/CorruptNoEasy ({type(e).__name__})"
                 return metadata
         # Final fallback: If still no duration or format, note error
         if metadata['duration'] is None:
             print(f"[METADATA][WARN] No duration found for {filepath}")
         if not metadata['format']:
-            metadata['format'] = "Unknown/Unsupported ({})".format(os.path.splitext(filepath)[1])
+            metadata['format'] = f"Unknown/Unsupported ({os.path.splitext(filepath)[1]})"
     except Exception as e:
         print(f"[METADATA][ERROR] Could not load audio file with mutagen (unsupported format or corrupt?): {filepath}\n{e}")
         traceback.print_exc()
-        metadata['format'] = "Error reading"
+        metadata['format'] = f"Error reading ({type(e).__name__})"
     return metadata
 
 def save_audio_metadata(filepath, new_metadata):
