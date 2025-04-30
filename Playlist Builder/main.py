@@ -1,0 +1,1799 @@
+import tkinter as tk
+from tkinter import ttk
+from tkinter import filedialog, simpledialog, messagebox
+import os
+import sys
+import json
+import shutil
+from mutagen import File as MutagenFile
+from mutagen.id3 import ID3NoHeaderError
+from mutagen.flac import FLACNoHeaderError
+from mutagen.mp4 import MP4NoTrackError
+from mutagen.oggvorbis import OggVorbisHeaderError
+import pygame # For prelistening
+import threading # For non-blocking prelisten update
+import time
+import tkinter.font as tkfont
+from metadata_utils import load_audio_metadata, save_audio_metadata
+import subprocess
+
+# --- Constants ---
+APP_NAME = "Multi-Playlist Editor"
+SETTINGS_FILE = "playlist_editor_settings.json"
+DEFAULT_COLUMNS = ['#', 'Artist', 'Title', 'Duration', 'Path', 'Exists']
+AVAILABLE_COLUMNS = ['#', 'Artist', 'Title', 'Album', 'Genre', 'TrackNumber', 'Duration', 'Path', 'Exists', 'Bitrate', 'Format']
+M3U_ENCODING = 'utf-8' # Use M3U8 standard
+
+# --- Helper Functions ---
+
+def format_duration(seconds):
+    """Formats seconds into MM:SS or HH:MM:SS"""
+    if seconds is None:
+        return "--:--"
+    try:
+        secs = int(seconds)
+        mins, secs = divmod(secs, 60)
+        hrs, mins = divmod(mins, 60)
+        if hrs > 0:
+            return f"{hrs:02d}:{mins:02d}:{secs:02d}"
+        else:
+            return f"{mins:02d}:{secs:02d}"
+    except (TypeError, ValueError):
+        return "--:--"
+
+def get_metadata(filepath):
+    # Deprecated: Use load_audio_metadata from metadata_utils.py
+    return load_audio_metadata(filepath)
+
+def open_file_location(filepath):
+    """Opens the folder containing the file in the default file explorer."""
+    directory = os.path.dirname(filepath)
+    try:
+        if os.path.isdir(directory):
+            if sys.platform == 'win32':
+                os.startfile(directory)
+            elif sys.platform == 'darwin': # macOS
+                subprocess.run(['open', directory], check=True)
+            else: # Linux and other POSIX
+                subprocess.run(['xdg-open', directory], check=True)
+        else:
+            messagebox.showwarning("Folder Not Found", f"The directory '{directory}' does not seem to exist.")
+    except Exception as e:
+        messagebox.showerror("Error Opening Location", f"Could not open file location:\n{e}")
+
+# --- Main Application Class ---
+
+class PlaylistManagerApp(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title(APP_NAME)
+        self.geometry("1000x700")
+
+        self.current_settings = {
+            "columns": DEFAULT_COLUMNS,
+            "profiles": {},
+            "last_profile": None,
+            "audio_device": None, # Placeholder for future device selection
+            "open_tabs": []
+        }
+        self.load_settings()
+
+        # --- Data ---
+        self.clipboard = [] # Simple list to hold track data dictionaries for copy/paste
+
+        # --- UI Elements ---
+        self.main_menu = tk.Menu(self)
+        self.config(menu=self.main_menu)
+
+        # File Menu
+        self.file_menu = tk.Menu(self.main_menu, tearoff=0)
+        self.main_menu.add_cascade(label="File", menu=self.file_menu)
+        self.file_menu.add_command(label="New Playlist Tab", command=self.add_new_tab)
+        self.file_menu.add_command(label="Open Playlist(s)...", command=self.open_playlists)
+        self.file_menu.add_separator()
+        self.file_menu.add_command(label="Save Current Playlist", command=self.save_current_playlist)
+        self.file_menu.add_command(label="Save Current Playlist As...", command=lambda: self.save_current_playlist(save_as=True))
+        self.file_menu.add_separator()
+        self.file_menu.add_command(label="Save Profile...", command=self.save_profile)
+        self.load_profile_menu = tk.Menu(self.main_menu, tearoff=0) # Dynamic menu
+        self.file_menu.add_cascade(label="Load Profile", menu=self.load_profile_menu)
+        self.update_load_profile_menu()
+        self.file_menu.add_separator()
+        self.file_menu.add_command(label="Close Current Tab", command=self.close_current_tab)
+        self.file_menu.add_separator()
+        self.file_menu.add_command(label="Exit", command=self.quit_app)
+
+        # Edit Menu
+        self.edit_menu = tk.Menu(self.main_menu, tearoff=0)
+        self.main_menu.add_cascade(label="Edit", menu=self.edit_menu)
+        self.edit_menu.add_command(label="Copy Selected", command=self.copy_selected)
+        self.edit_menu.add_command(label="Paste Tracks", command=self.paste_tracks)
+        self.edit_menu.add_separator()
+        self.edit_menu.add_command(label="Remove Selected", command=self.remove_selected_from_current)
+        # Add more later: Select All, Find, etc.
+
+        # View Menu
+        self.view_menu = tk.Menu(self.main_menu, tearoff=0)
+        self.main_menu.add_cascade(label="View", menu=self.view_menu)
+        self.view_menu.add_command(label="Customize Columns...", command=self.customize_columns)
+        self.view_menu.add_command(label="Refresh Current Playlist View", command=self.refresh_current_tab_view)
+        self.view_menu.add_separator()
+        self.view_menu.add_command(label="Show Filter Bar", command=self.toggle_filter_bar)
+
+        # --- Main Area ---
+        self.notebook = ttk.Notebook(self)
+        self.notebook.pack(expand=True, fill="both", side="top", padx=5, pady=5)
+        self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_change)
+        self.notebook.bind("<Button-3>", self.on_tab_right_click)
+
+        # --- Pre-listen Controls ---
+        self.prelisten_frame = ttk.Frame(self)
+        self.prelisten_frame.pack(fill="x", side="bottom", padx=5, pady=(0, 5))
+
+        self.play_pause_button = ttk.Button(self.prelisten_frame, text="▶ Play", command=self.toggle_play_pause, width=8)
+        self.play_pause_button.pack(side="left", padx=(0,5))
+        self.stop_button = ttk.Button(self.prelisten_frame, text="■ Stop", command=self.stop_playback, width=8)
+        self.stop_button.pack(side="left", padx=(0,5))
+
+        self.prelisten_label = ttk.Label(self.prelisten_frame, text="No track selected.", anchor="w", width=60)
+        self.prelisten_label.pack(side="left", padx=5, fill="x", expand=True)
+
+        # Speed control (simple placeholder - real speed control is complex)
+        self.speed_label = ttk.Label(self.prelisten_frame, text="Speed:")
+        self.speed_label.pack(side="left", padx=(10, 2))
+        self.speed_var = tk.StringVar(value="1.0x")
+        self.speed_combobox = ttk.Combobox(self.prelisten_frame, textvariable=self.speed_var,
+                                           values=["0.5x", "0.75x", "1.0x", "1.25x", "1.5x", "2.0x"],
+                                           width=5, state="readonly") # Readonly for now, as changing speed mid-play isn't implemented simply with pygame.mixer.music
+        self.speed_combobox.pack(side="left", padx=(0,5))
+        self.speed_combobox.bind("<<ComboboxSelected>>", self.apply_speed_change_on_next_play) # Just note the change
+
+        self.progress_label = ttk.Label(self.prelisten_frame, text="00:00 / 00:00", width=15, anchor='e')
+        self.progress_label.pack(side="right", padx=5)
+
+
+        # --- Status Bar ---
+        self.status_var = tk.StringVar()
+        self.status_bar = ttk.Label(self, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
+        self.status_bar.pack(side="bottom", fill=tk.X)
+        self.set_status("Ready.")
+
+        # --- Playback State ---
+        self.currently_playing_path = None
+        self.is_paused = False
+        self.playback_start_time = 0
+        self.paused_position = 0
+        self.current_track_duration = 0
+        self.playback_update_job = None # To store the after() job ID for progress updates
+
+        # --- Load Last Profile ---
+        if self.current_settings.get("last_profile"):
+            self.load_profile(self.current_settings["last_profile"], startup=True)
+        else:
+            # Restore open tabs if present, else start with one empty tab
+            self.restore_open_tabs()
+            if not self.notebook.tabs():
+                self.add_new_tab("Untitled Playlist")
+
+        # --- Protocol Handlers ---
+        self.protocol("WM_DELETE_WINDOW", self.quit_app)
+
+        # --- Pygame Mixer Init ---
+        self._auto_init_audio()
+
+    def set_status(self, message):
+        self.status_var.set(message)
+        # print(message) # Also print to console for debugging
+
+    def get_current_tab(self) -> 'PlaylistTab | None':
+        """Gets the currently selected PlaylistTab instance."""
+        try:
+            selected_tab_id = self.notebook.select()
+            if selected_tab_id:
+                widget = self.nametowidget(selected_tab_id)
+                # Ensure it's one of our PlaylistTab frames
+                if isinstance(widget, PlaylistTab):
+                    return widget
+        except tk.TclError: # No tabs exist or selected
+            pass
+        return None
+
+    def on_tab_change(self, event=None):
+        """Called when the selected tab changes."""
+        # Stop playback when switching tabs
+        if self.currently_playing_path:
+             self.stop_playback()
+
+        current_tab = self.get_current_tab()
+        if current_tab:
+            self.set_status(f"Active Playlist: {current_tab.get_display_name()}")
+            # Update prelisten label if a track is selected in the new tab
+            selected_iid = current_tab.get_selected_item_id()
+            if selected_iid:
+                track_data = current_tab.get_track_data_by_iid(selected_iid)
+                if track_data:
+                    self.update_prelisten_info(track_data)
+                else:
+                    self.reset_prelisten_ui()
+            else:
+                 self.reset_prelisten_ui()
+                 self.set_status("No playlist selected.")
+        else:
+             self.reset_prelisten_ui()
+             self.set_status("No playlist selected.")
+
+    # --- Playlist Management ---
+
+    def add_new_tab(self, title="Untitled Playlist", filepath=None):
+        """Adds a new empty playlist tab."""
+        tab = PlaylistTab(self.notebook, self, filepath=filepath, initial_columns=self.current_settings['columns'])
+        self.notebook.add(tab, text=title)
+        self.notebook.select(tab) # Make the new tab active
+        tab.update_tab_title() # Set initial '*' if needed
+        self.set_status(f"Created new playlist: {title}")
+        return tab
+
+    def open_playlists(self):
+        """Opens one or more M3U/M3U8 files in new tabs."""
+        filepaths = filedialog.askopenfilenames(
+            title="Open Playlist(s)",
+            filetypes=[("M3U Playlists", "*.m3u *.m3u8"), ("All Files", "*.*")]
+        )
+        if not filepaths:
+            return
+
+        loaded_count = 0
+        for path in filepaths:
+            try:
+                # Check if already open
+                is_open = False
+                for tab in self.notebook.tabs():
+                    widget = self.nametowidget(tab)
+                    if isinstance(widget, PlaylistTab) and widget.filepath == path:
+                        self.notebook.select(widget) # Switch to existing tab
+                        self.set_status(f"Playlist '{os.path.basename(path)}' is already open.")
+                        is_open = True
+                        break
+                if is_open:
+                    continue
+                # If current tab is empty, load into it
+                current_tab = self.get_current_tab()
+                if current_tab and not current_tab._track_data:
+                    success = current_tab.load_playlist_from_file(path)
+                    if success:
+                        current_tab.filepath = path
+                        current_tab.tab_display_name = os.path.basename(path)
+                        current_tab.update_tab_title()
+                        loaded_count += 1
+                    else:
+                        messagebox.showerror("Load Error", f"Failed to load playlist:\n{path}\nSee console for details.")
+                        current_tab.is_dirty = False
+                        current_tab.update_tab_title()
+                    continue
+                # Add new tab and load
+                tab_title = os.path.basename(path)
+                new_tab = self.add_new_tab(title=tab_title, filepath=path)
+                success = new_tab.load_playlist_from_file(path)
+                if success:
+                    loaded_count += 1
+                else:
+                    messagebox.showerror("Load Error", f"Failed to load playlist:\n{path}\nSee console for details.")
+                    new_tab.is_dirty = False
+                    new_tab.update_tab_title()
+            except Exception as e:
+                messagebox.showerror("Error Opening Playlist", f"Could not open {os.path.basename(path)}:\n{e}")
+                self.set_status(f"Error opening {os.path.basename(path)}")
+        self.set_status(f"Opened {loaded_count} playlist(s).")
+
+    def save_current_playlist(self, save_as=False):
+        """Saves the playlist in the currently active tab."""
+        current_tab = self.get_current_tab()
+        if not current_tab:
+            messagebox.showwarning("No Playlist", "No playlist tab is currently active.")
+            return
+
+        current_tab.save_playlist(force_save_as=save_as)
+
+    def close_current_tab(self):
+        """Closes the currently active tab, prompting to save if dirty."""
+        current_tab = self.get_current_tab()
+        if not current_tab:
+            return
+
+        if current_tab.is_dirty:
+            response = messagebox.askyesnocancel(
+                "Unsaved Changes",
+                f"Playlist '{current_tab.get_display_name()}' has unsaved changes.\nDo you want to save before closing?"
+            )
+            if response is None: # Cancel
+                return False # Indicate closing was cancelled
+            elif response is True: # Yes (Save)
+                saved = current_tab.save_playlist()
+                if not saved: # Saving was cancelled or failed
+                    return False # Indicate closing was cancelled
+
+        # If response was False (No) or save was successful, proceed to close
+        tab_id = self.notebook.select()
+        self.notebook.forget(tab_id)
+        self.set_status(f"Closed tab: {current_tab.get_display_name()}")
+        # If this was the last tab, the notebook might trigger on_tab_change, handle gracefully
+        if not self.notebook.tabs():
+             self.reset_prelisten_ui()
+             self.set_status("Ready.")
+        return True # Indicate successful close
+
+    # --- Track Operations (delegated to current tab) ---
+
+    def copy_selected(self):
+        current_tab = self.get_current_tab()
+        if current_tab:
+            self.clipboard = current_tab.get_selected_track_data()
+            if self.clipboard:
+                self.set_status(f"Copied {len(self.clipboard)} track(s) to clipboard.")
+            else:
+                self.set_status("Select tracks to copy first.")
+
+    def paste_tracks(self):
+        current_tab = self.get_current_tab()
+        if not current_tab:
+            messagebox.showwarning("Paste Error", "No active playlist tab to paste into.")
+            return
+        if not self.clipboard:
+            messagebox.showwarning("Paste Error", "Clipboard is empty.")
+            return
+
+        current_tab.add_tracks(self.clipboard) # Add tracks takes list of dicts
+        self.set_status(f"Pasted {len(self.clipboard)} track(s) into {current_tab.get_display_name()}.")
+
+    def remove_selected_from_current(self):
+        current_tab = self.get_current_tab()
+        if current_tab:
+            current_tab.remove_selected_tracks()
+
+    def refresh_current_tab_view(self):
+         current_tab = self.get_current_tab()
+         if current_tab:
+             current_tab.refresh_display()
+             self.set_status(f"Refreshed view for {current_tab.get_display_name()}")
+
+    # --- Column Customization ---
+
+    def customize_columns(self):
+        """Opens a dialog to choose visible columns."""
+        dialog = ColumnChooserDialog(self, AVAILABLE_COLUMNS, self.current_settings['columns'])
+        if dialog.result:
+            self.current_settings['columns'] = dialog.result
+            self.apply_column_settings_to_all_tabs()
+            self.save_settings() # Persist column changes
+            self.set_status("Column view updated.")
+
+    def apply_column_settings_to_all_tabs(self):
+        """Applies the current column settings to all open tabs."""
+        for tab_id in self.notebook.tabs():
+            widget = self.nametowidget(tab_id)
+            if isinstance(widget, PlaylistTab):
+                widget.update_columns(self.current_settings['columns'])
+
+    # --- Profile Management ---
+
+    def save_profile(self):
+        """Saves the current state (open tabs, columns) as a named profile."""
+        profile_name = simpledialog.askstring("Save Profile", "Enter a name for this profile:", parent=self)
+        if not profile_name:
+            return
+
+        open_tabs_paths = []
+        for tab_id in self.notebook.tabs():
+            widget = self.nametowidget(tab_id)
+            if isinstance(widget, PlaylistTab) and widget.filepath:
+                open_tabs_paths.append(widget.filepath)
+            else:
+                self.set_status(f"Warning: Untitled playlist '{widget.get_display_name()}' was not saved in the profile.")
+
+        profile_data = {
+            "tabs": open_tabs_paths,
+            "columns": self.current_settings['columns']
+            # Add other settings here if needed, e.g., window size/pos
+        }
+
+        self.current_settings["profiles"][profile_name] = profile_data
+        self.current_settings["last_profile"] = profile_name # Set as last loaded
+        self.save_settings()
+        self.update_load_profile_menu()
+        self.set_status(f"Profile '{profile_name}' saved.")
+
+    def load_profile(self, profile_name, startup=False):
+        """Loads a saved profile, closing current tabs and opening saved ones."""
+        if profile_name not in self.current_settings["profiles"]:
+            messagebox.showerror("Load Error", f"Profile '{profile_name}' not found.")
+            if startup: # If failed on startup, clear last profile setting and restore open tabs
+                self.current_settings["last_profile"] = None
+                self.save_settings()
+                self.restore_open_tabs()
+                if not self.notebook.tabs():
+                    self.add_new_tab("Untitled Playlist")
+                return
+            return
+        profile_data = self.current_settings["profiles"][profile_name]
+
+        # 1. Close all existing tabs (prompting for save)
+        all_tabs_closed = True
+        # Iterate backwards because closing modifies the list of tabs
+        for tab_id in reversed(self.notebook.tabs()):
+             self.notebook.select(tab_id) # Select tab to make close_current_tab work
+             if not self.close_current_tab():
+                  all_tabs_closed = False
+                  # Don't break, let user decide for others, but report failure
+                  messagebox.showwarning("Save Failed", f"Could not save '{widget.get_display_name()}'. Exiting anyway?", parent=self)
+                  # Or could force exit cancellation:
+                  # self.set_status("Exit cancelled due to save failure.")
+                  # return
+        # If save_all is False (No), proceed to exit without saving
+
+        # 2. Stop audio gracefully
+        if hasattr(self, 'pygame_initialized') and getattr(self, 'pygame_initialized', False):
+            self.stop_playback()
+            pygame.mixer.quit()
+            print("Pygame mixer quit.")
+
+        # 3. Save settings (like last loaded profile)
+        self.save_settings()
+
+        # 4. Destroy window
+        if not startup:
+            self.destroy()
+        # If called during __init__, prevent further initialization
+        if startup:
+            raise SystemExit
+
+    def update_load_profile_menu(self):
+        """Updates the dynamic 'Load Profile' menu."""
+        self.load_profile_menu.delete(0, tk.END) # Clear existing items
+        profiles = self.current_settings.get("profiles", {})
+        if not profiles:
+            self.load_profile_menu.add_command(label="(No profiles saved)", state="disabled")
+        else:
+            # Sort profile names alphabetically for consistency
+            for name in sorted(profiles.keys()):
+                # Use lambda with default argument to capture the current name
+                self.load_profile_menu.add_command(label=name, command=lambda n=name: self.load_profile(n))
+            self.load_profile_menu.add_separator()
+            self.load_profile_menu.add_command(label="Delete Profile...", command=self.delete_profile)
+
+
+    def delete_profile(self):
+        profiles = list(self.current_settings.get("profiles", {}).keys())
+        if not profiles:
+             messagebox.showinfo("Delete Profile", "There are no profiles to delete.")
+             return
+
+        # Simple dialog to choose profile to delete (could be improved with a listbox)
+        choice = simpledialog.askstring("Delete Profile", "Enter the exact name of the profile to delete:", parent=self)
+
+        if choice and choice in self.current_settings["profiles"]:
+            if messagebox.askyesno("Confirm Deletion", f"Are you sure you want to delete the profile '{choice}'?", parent=self):
+                del self.current_settings["profiles"][choice]
+                if self.current_settings.get("last_profile") == choice:
+                    self.current_settings["last_profile"] = None # Clear last profile if it was the deleted one
+                self.save_settings()
+                self.update_load_profile_menu()
+                self.set_status(f"Profile '{choice}' deleted.")
+        elif choice:
+             messagebox.showerror("Delete Error", f"Profile '{choice}' not found.", parent=self)
+
+
+    # --- Settings Persistence ---
+
+    def save_settings(self):
+        """Saves current settings to SETTINGS_FILE, including open tabs."""
+        # Save open tabs (filepaths or None for untitled tabs)
+        open_tabs = []
+        for tab_id in self.notebook.tabs():
+            widget = self.nametowidget(tab_id)
+            if hasattr(widget, 'filepath') and widget.filepath:
+                open_tabs.append(widget.filepath)
+            else:
+                open_tabs.append(None)
+        self.current_settings['open_tabs'] = open_tabs
+        # Save as before
+        try:
+            with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
+                json.dump(self.current_settings, f, indent=2)
+        except Exception as e:
+            print(f"[ERROR] Saving settings: {e}")
+
+    def load_settings(self):
+        """Loads settings from SETTINGS_FILE, including open tabs."""
+        if not os.path.exists(SETTINGS_FILE):
+            self.current_settings = {
+                "columns": DEFAULT_COLUMNS,
+                "profiles": {},
+                "last_profile": None,
+                "audio_device": None
+            }
+            return
+        try:
+            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                self.current_settings = json.load(f)
+        except Exception as e:
+            print(f"[ERROR] Loading settings: {e}")
+            self.current_settings = {
+                "columns": DEFAULT_COLUMNS,
+                "profiles": {},
+                "last_profile": None,
+                "audio_device": None
+            }
+
+    def restore_open_tabs(self):
+        """Restores open tabs from settings on startup and loads playlists."""
+        open_tabs = self.current_settings.get('open_tabs', [])
+        # Remove all tabs safely
+        for tab_id in self.notebook.tabs():
+            self.notebook.forget(tab_id)
+        if open_tabs:
+            for filepath in open_tabs:
+                if filepath:
+                    tab = self.add_new_tab(title=os.path.basename(filepath), filepath=filepath)
+                    if hasattr(tab, 'load_playlist_from_file'):
+                        tab.load_playlist_from_file(filepath)
+                else:
+                    self.add_new_tab("Untitled Playlist")
+
+    # --- Pre-listening ---
+
+    def toggle_play_pause(self):
+        if not self.pygame_initialized:
+            messagebox.showwarning("Audio Error", "Audio system not initialized. Cannot play.")
+            return
+
+        if self.currently_playing_path:
+            if self.is_paused:
+                # Resume
+                try:
+                    pygame.mixer.music.unpause()
+                    self.is_paused = False
+                    self.play_pause_button.config(text="❚❚ Pause")
+                    self.set_status(f"Resumed: {os.path.basename(self.currently_playing_path)}")
+                    # Restart progress updater from paused position
+                    self.playback_start_time = time.time() - self.paused_position
+                    self._update_playback_progress()
+                except Exception as e:
+                    messagebox.showerror("Playback Error", f"Could not resume playback: {e}")
+                    self.stop_playback() # Stop fully if error
+            else:
+                # Pause
+                try:
+                    pygame.mixer.music.pause()
+                    self.is_paused = True
+                    self.play_pause_button.config(text="▶ Play")
+                    self.set_status(f"Paused: {os.path.basename(self.currently_playing_path)}")
+                    # Record position and stop updater
+                    self.paused_position = time.time() - self.playback_start_time
+                    if self.playback_update_job:
+                        self.after_cancel(self.playback_update_job)
+                        self.playback_update_job = None
+                except Exception as e:
+                    messagebox.showerror("Playback Error", f"Could not pause playback: {e}")
+                    self.stop_playback() # Stop fully if error
+        else:
+            # Start playing selected track
+            current_tab = self.get_current_tab()
+            if not current_tab:
+                return
+
+            iid = current_tab.get_selected_item_id()
+            if not iid:
+                messagebox.showinfo("Play Track", "Select a track in the list to play.")
+                return
+
+            track_data = current_tab.get_track_data_by_iid(iid)
+            if not track_data or not track_data.get('exists'):
+                messagebox.showwarning("Play Error", "Cannot play track: File does not exist or data missing.")
+                return
+
+            self.start_playback(track_data)
+
+    def start_playback(self, track_data):
+        """Starts playback of the given track data dictionary."""
+        # Robust check: ensure mixer is actually initialized in pygame, not just our flag
+        try:
+            if pygame.mixer.get_init() is None:
+                print("[WARN] Mixer not actually initialized at playback time. Attempting re-init.")
+                pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=2048)
+                print("[INFO] Mixer re-initialized at playback time.")
+                self.pygame_initialized = True
+        except Exception as e:
+            print(f"[ERROR] Failed to re-initialize mixer at playback time: {e}")
+            self.set_status(f"Audio Error: Could not initialize mixer for playback: {e}")
+            return
+        print(f"[DEBUG] start_playback called for {track_data.get('path')}. Initialized: {self.pygame_initialized}")
+        if not self.pygame_initialized:
+            print("[ERROR] start_playback attempted but mixer not initialized.")
+            self.set_status("Audio Error: Mixer not initialized. Cannot play.")
+            return
+        if not track_data or not track_data.get('path') or not track_data.get('exists'):
+            self.set_status("Error: Cannot play missing or invalid file.")
+            return
+        if not track_data['exists']:
+            self.set_status("Error: File does not exist.")
+            return
+        path = track_data['path']
+
+        try:
+            pygame.mixer.music.load(path)
+            pygame.mixer.music.play()
+
+            self.currently_playing_path = path
+            self.is_paused = False
+            self.paused_position = 0
+            self.current_track_duration = track_data.get('duration') or 0 # Get duration from track data
+            self.play_pause_button.config(text="❚❚ Pause")
+            self.update_prelisten_info(track_data)
+            self.set_status(f"Playing: {os.path.basename(path)}")
+
+            # Start progress updates
+            self.playback_start_time = time.time()
+            self._update_playback_progress()
+
+        except Exception as e:
+            print(f"[ERROR] Exception during playback: {e}")
+            self.set_status(f"Audio Error: {e}")
+            return
+
+    def stop_playback(self):
+        if not self.pygame_initialized: return
+
+        if self.playback_update_job:
+            self.after_cancel(self.playback_update_job)
+            self.playback_update_job = None
+
+        try:
+            pygame.mixer.music.stop()
+            pygame.mixer.music.unload() # Free up the file handle
+        except pygame.error as e:
+            # Ignore errors on stop usually, maybe file was already gone?
+            print(f"Pygame error during stop/unload: {e}")
+
+
+        was_playing = self.currently_playing_path is not None
+        self.currently_playing_path = None
+        self.is_paused = False
+        self.paused_position = 0
+        self.play_pause_button.config(text="▶ Play")
+        if was_playing:
+            self.set_status("Playback stopped.")
+            # Don't reset the label immediately, keep showing last track info until new selection/action
+            self.progress_label.config(text=f"00:00 / {format_duration(self.current_track_duration)}")
+
+
+    def _update_playback_progress(self):
+        """Internal function to update the playback progress label."""
+        if self.currently_playing_path and not self.is_paused and pygame.mixer.music.get_busy():
+            # Using time.time() is more reliable than get_pos() for elapsed time after seeks/pauses
+            elapsed_time = time.time() - self.playback_start_time
+
+            # Cap elapsed time at duration if known
+            if self.current_track_duration > 0:
+                elapsed_time = min(elapsed_time, self.current_track_duration)
+
+            self.progress_label.config(text=f"{format_duration(elapsed_time)} / {format_duration(self.current_track_duration)}")
+
+            # Schedule next update
+            self.playback_update_job = self.after(250, self._update_playback_progress) # Update 4 times a second
+        elif self.currently_playing_path and not self.is_paused:
+             # Music stopped naturally (finished)
+             self.stop_playback() # Clean up state
+
+
+    def update_prelisten_info(self, track_data):
+         """Updates the pre-listen display area with track details."""
+         if track_data:
+             title = track_data.get('title', 'Unknown Title')
+             artist = track_data.get('artist', 'Unknown Artist')
+             duration_str = format_duration(track_data.get('duration'))
+             self.prelisten_label.config(text=f"{artist} - {title}")
+             # Only reset progress if not currently playing THIS track
+             if track_data.get('path') != self.currently_playing_path:
+                 self.progress_label.config(text=f"00:00 / {duration_str}")
+                 self.current_track_duration = track_data.get('duration', 0) # Store duration for playback
+         else:
+             self.reset_prelisten_ui()
+
+    def reset_prelisten_ui(self):
+        self.prelisten_label.config(text="No track selected.")
+        self.progress_label.config(text="00:00 / 00:00")
+        self.play_pause_button.config(text="▶ Play")
+        # Don't stop playback here, only reset UI text
+
+    def apply_speed_change_on_next_play(self, event=None):
+        # Currently just acknowledges the change. Real implementation is complex.
+        speed = self.speed_var.get()
+        self.set_status(f"Playback speed set to {speed} (will apply on next play if supported).")
+        # In a real implementation, you might need to stop, reload with speed modification (if lib supports), and play.
+
+
+    # --- Application Exit ---
+
+    def quit_app(self):
+        """Handles application closing, prompts for saving profiles/playlists."""
+        # 1. Check unsaved playlists across all tabs
+        tabs_to_save = []
+        for tab_id in self.notebook.tabs():
+            widget = self.nametowidget(tab_id)
+            if isinstance(widget, PlaylistTab) and widget.is_dirty:
+                tabs_to_save.append(widget.get_display_name())
+
+        if tabs_to_save:
+            save_all = messagebox.askyesnocancel(
+                "Unsaved Playlists",
+                "There are unsaved playlists:\n- " + "\n- ".join(tabs_to_save) +
+                "\n\nDo you want to save all changes before exiting?"
+            )
+            if save_all is None: # Cancel exit
+                return
+            elif save_all is True: # Save All
+                all_saved = True
+                for tab_id in self.notebook.tabs():
+                     self.notebook.select(tab_id) # Select tab to make close_current_tab work
+                     if not self.close_current_tab():
+                          all_saved = False
+                          # Don't break, let user decide for others, but report failure
+                          messagebox.showwarning("Save Failed", f"Could not save '{widget.get_display_name()}'. Exiting anyway?", parent=self)
+                          # Or could force exit cancellation:
+                          # self.set_status("Exit cancelled due to save failure.")
+                          # return
+                # Proceed to exit even if some saves failed after warning
+        # If save_all is False (No), proceed to exit without saving
+
+        # 2. Stop audio gracefully
+        if hasattr(self, 'pygame_initialized') and getattr(self, 'pygame_initialized', False):
+            self.stop_playback()
+            pygame.mixer.quit()
+            print("Pygame mixer quit.")
+
+        # 3. Save settings (like last loaded profile)
+        self.save_settings()
+
+        # 4. Destroy window
+        self.destroy()
+
+    def toggle_filter_bar(self):
+        tab = self.get_current_tab()
+        if tab:
+            tab.show_filter_bar()
+
+    def _auto_init_audio(self):
+        """Tries to initialize pygame mixer with retry logic, silently."""
+        self.pygame_initialized = False
+        max_attempts = 5
+        delay_ms = 500 # Delay between retries in milliseconds
+
+        def attempt_init(attempt_num):
+            if attempt_num > max_attempts:
+                print("[ERROR] Audio could not be initialized after retries. Pre-listening disabled.")
+                self.set_status("Audio not available: Mixer not initialized after retries.")
+                return
+            try:
+                pygame.mixer.quit()
+            except Exception:
+                pass # Ignore errors during quit
+            try:
+                pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=2048)
+                self.pygame_initialized = True
+                print("[DEBUG] self.pygame_initialized set to True")
+                self.set_status("Audio initialized. Pre-listening enabled.")
+                print(f"[INFO] Pygame mixer initialized (attempt {attempt_num}).")
+            except Exception as e:
+                self.pygame_initialized = False
+                print(f"[WARN] Audio init attempt {attempt_num} failed: {e}")
+                self.set_status(f"Audio not available (attempt {attempt_num}): {e}")
+                self.after(delay_ms, lambda: attempt_init(attempt_num + 1))
+
+        # Start the first attempt
+        attempt_init(1)
+
+    def on_tab_right_click(self, event):
+        """Show context menu for renaming tab on right-click of notebook tab."""
+        x, y = event.x, event.y
+        elem = self.notebook.identify(event.x, event.y)
+        if elem == 'label':
+            tab_id = self.notebook.index(f"@{x},{y}")
+            menu = tk.Menu(self, tearoff=0)
+            menu.add_command(label="Rename Tab", command=lambda: self.rename_notebook_tab(tab_id))
+            menu.tk_popup(event.x_root, event.y_root)
+
+    def rename_notebook_tab(self, tab_id):
+        """Prompt user to rename the tab at tab_id."""
+        current_title = self.notebook.tab(tab_id, "text")
+        new_title = simpledialog.askstring("Rename Tab", "Enter new tab name:", initialvalue=current_title, parent=self)
+        if new_title and new_title.strip():
+            self.notebook.tab(tab_id, text=new_title.strip())
+            # Also update PlaylistTab's tab_display_name if possible
+            widget = self.nametowidget(self.notebook.tabs()[tab_id])
+            if hasattr(widget, 'tab_display_name'):
+                widget.tab_display_name = new_title.strip()
+
+# --- Playlist Tab Class ---
+
+class PlaylistTab(ttk.Frame):
+    def __init__(self, parent_notebook, app_controller, filepath=None, initial_columns=None):
+        super().__init__(parent_notebook)
+        self.notebook = parent_notebook
+        self.app = app_controller
+        self.filepath = filepath
+        self.is_dirty = False
+        self._track_data = [] # List of dictionaries holding track metadata
+        self._iid_map = {} # Maps Treeview iid to index in _track_data for quick lookup
+        self.tab_display_name = os.path.basename(filepath) if filepath else "Untitled Playlist"
+
+        self.visible_columns = initial_columns if initial_columns else DEFAULT_COLUMNS
+
+        # --- UI Elements ---
+        # Toolbar Frame
+        self.toolbar = ttk.Frame(self)
+        self.toolbar.pack(side="top", fill="x", pady=(5,0), padx=5)
+
+        # Restore original toolbar buttons
+        self.add_files_button = ttk.Button(self.toolbar, text="Add Files...", command=self.add_files)
+        self.add_files_button.pack(side="left", padx=(0,5))
+        self.add_folder_button = ttk.Button(self.toolbar, text="Add Folder...", command=self.add_folder)
+        self.add_folder_button.pack(side="left", padx=(0,5))
+        self.remove_button = ttk.Button(self.toolbar, text="Remove Selected", command=self.remove_selected_tracks)
+        self.remove_button.pack(side="left", padx=(0,5))
+        self.move_up_button = ttk.Button(self.toolbar, text="Move Up", command=self.move_selected_up)
+        self.move_up_button.pack(side="left", padx=(5,5))
+        self.move_down_button = ttk.Button(self.toolbar, text="Move Down", command=self.move_selected_down)
+        self.move_down_button.pack(side="left", padx=(0,5))
+
+        # Find Area (replaces Filter)
+        self.find_label = ttk.Label(self.toolbar, text="Find:")
+        self.find_label.pack(side="left", padx=(15, 2))
+        self.find_var = tk.StringVar()
+        self.find_entry = ttk.Entry(self.toolbar, textvariable=self.find_var, width=30)
+        self.find_entry.pack(side="left", padx=(0, 5))
+        self.find_entry.bind('<Return>', self.find_next)
+        self.clear_find_button = ttk.Button(self.toolbar, text="Clear", command=self.clear_find, width=6)
+        self.clear_find_button.pack(side="left")
+        self.find_prev_button = ttk.Button(self.toolbar, text="◀", width=2, command=lambda: self.find_next(reverse=True))
+        self.find_prev_button.pack(side="left", padx=(2,0))
+        self.find_next_button = ttk.Button(self.toolbar, text="▶", width=2, command=self.find_next)
+        self.find_next_button.pack(side="left", padx=(0,5))
+        self._find_matches = []
+        self._find_index = -1
+
+        # Filter moved to menu (View menu)
+        self.filter_frame = None
+
+        # Treeview Frame with Scrollbar
+        self.tree_frame = ttk.Frame(self)
+        self.tree_frame.pack(expand=True, fill="both", side="top", pady=5, padx=5)
+
+        self.scrollbar_y = ttk.Scrollbar(self.tree_frame, orient="vertical")
+        self.scrollbar_x = ttk.Scrollbar(self.tree_frame, orient="horizontal")
+
+        self.tree = ttk.Treeview(
+            self.tree_frame,
+            columns=AVAILABLE_COLUMNS, # Define all possible columns
+            displaycolumns=self.visible_columns, # Show only the selected ones
+            show="headings",
+            yscrollcommand=self.scrollbar_y.set,
+            xscrollcommand=self.scrollbar_x.set,
+            selectmode="extended" # Allow multiple selections
+        )
+
+        self.scrollbar_y.config(command=self.tree.yview)
+        self.scrollbar_x.config(command=self.tree.xview)
+
+        self.scrollbar_y.pack(side="right", fill="y")
+        self.scrollbar_x.pack(side="bottom", fill="x")
+        self.tree.pack(expand=True, fill="both", side="left")
+
+        self.setup_columns()
+
+        # --- Treeview Tag Styles ---
+        # Red + strikethrough for missing files
+        try:
+            default_font = tkfont.nametofont(self.tree.cget("font"))
+            missing_font = default_font.copy()
+            missing_font.configure(overstrike=1)
+            self.tree.tag_configure("missing", foreground="red", font=missing_font)
+        except Exception:
+            # Fallback: just red if font fails
+            self.tree.tag_configure("missing", foreground="red")
+        # Optionally, ensure 'found' tag is default
+        self.tree.tag_configure("found", foreground="black")
+
+        # --- Treeview Bindings ---
+        self.tree.bind("<Double-1>", self.on_double_click)
+        self.tree.bind("<Button-3>", self.show_context_menu) # Right-click
+        self.tree.bind("<<TreeviewSelect>>", self.on_tree_select)
+        self.tree.bind("<Delete>", lambda e: self.remove_selected_tracks()) # Delete key
+        self.tree.bind("<Control-c>", lambda e: self.app.copy_selected())
+        self.tree.bind("<Control-C>", lambda e: self.app.copy_selected())
+        self.tree.bind("<Control-v>", lambda e: self.paste_after_selected())
+        self.tree.bind("<Control-V>", lambda e: self.paste_after_selected())
+        self.find_entry.bind('<Return>', self.find_next)
+        # Right-click context menu: add Paste
+        self.context_menu = tk.Menu(self, tearoff=0)
+        self.context_menu.add_command(label="Pre-listen", command=self.context_prelisten)
+        self.context_menu.add_separator()
+        self.context_menu.add_command(label="Copy", command=self.context_copy)
+        # Paste is handled globally/via edit menu
+        self.context_menu.add_separator()
+        self.context_menu.add_command(label="Edit Metadata...", command=self.context_edit_metadata)
+        self.context_menu.add_command(label="Rename Manually", command=self.context_rename_file_manual)
+        self.context_menu.add_command(label="Rename by Browsing", command=self.context_rename_file_browse)
+        self.context_menu.add_separator()
+        self.context_menu.add_command(label="Rename Tab", command=self.context_rename_tab)
+        self.context_menu.add_separator()
+        self.context_menu.add_command(label="Open File Location", command=self.context_open_location)
+        self.context_menu.add_command(label="Check File Existence", command=self.context_check_existence)
+        self.context_menu.add_separator()
+        self.context_menu.add_command(label="Remove From Playlist", command=self.context_remove)
+        self.context_menu.add_command(label="Paste After", command=self.paste_after_selected)
+
+    def context_rename_tab(self):
+        new_name = simpledialog.askstring("Rename Tab", "Enter new tab name:", initialvalue=self.tab_display_name, parent=self)
+        if new_name:
+            self.tab_display_name = new_name
+            self.update_tab_title()
+
+    def update_tab_title(self):
+        idx = self.notebook.index(self)
+        self.notebook.tab(idx, text=self.get_display_name())
+
+    def get_display_name(self):
+        return self.tab_display_name + ("*" if self.is_dirty else "")
+
+    def show_filter_bar(self):
+        if self.filter_frame:
+            self.filter_frame.pack_forget()
+            self.filter_frame = None
+            return
+        self.filter_frame = ttk.Frame(self.toolbar)
+        self.filter_frame.pack(side="right", padx=5)
+        self.search_var = tk.StringVar()
+        self.search_var.trace_add("write", self.filter_tracks)
+        self.search_label = ttk.Label(self.filter_frame, text="Filter:")
+        self.search_label.pack(side="left")
+        self.search_entry = ttk.Entry(self.filter_frame, textvariable=self.search_var, width=20)
+        self.search_entry.pack(side="left", padx=(0, 5))
+        self.clear_search_button2 = ttk.Button(self.filter_frame, text="Clear", command=lambda: self.search_var.set(""), width=6)
+        self.clear_search_button2.pack(side="left")
+
+    def find_tracks(self, event=None):
+        find_term = self.find_var.get().lower()
+        if not find_term:
+            self.refresh_display()
+            return
+        display_data = []
+        for track in self._track_data:
+            match = False
+            for col in self.visible_columns:
+                val = self.get_formatted_value(track, col)
+                if find_term in str(val).lower():
+                    match = True
+                    break
+            if match:
+                display_data.append(track)
+        self.refresh_display(custom_data=display_data)
+
+    def refresh_display(self, sort_col=None, reverse_sort=False, keep_selection=True, custom_data=None):
+        selected_iids = self.tree.selection() if keep_selection else []
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        self._iid_map.clear()
+        if sort_col:
+            self._sort_internal_data(sort_col, reverse_sort)
+        display_data = custom_data if custom_data is not None else self._track_data
+        for index, track_info in enumerate(display_data):
+            values = [index + 1 if col == '#' else self.get_formatted_value(track_info, col) for col in AVAILABLE_COLUMNS]
+            tag = "missing" if not track_info.get('exists', True) else "found"
+            iid = self.tree.insert("", tk.END, values=values, tags=(tag,))
+            self._iid_map[iid] = track_info
+        if keep_selection:
+            self.tree.selection_set(())
+
+    def get_formatted_value(self, track_data, column_id):
+        if column_id == '#':
+            return '' # Handled in refresh_display
+        elif column_id == 'Duration':
+            return format_duration(track_data.get('duration'))
+        elif column_id == 'Exists':
+            return "Yes" if track_data.get('exists', False) else "No"
+        elif column_id == 'Bitrate':
+            br = track_data.get('bitrate')
+            return f"{br // 1000} kbps" if br else ""
+        elif column_id == 'TrackNumber':
+            return track_data.get('tracknumber', '')
+        else:
+            val = track_data.get(column_id.lower(), '')
+            if isinstance(val, list):
+                return ', '.join(val)
+            return val if val is not None else ''
+
+    def get_selected_item_ids(self):
+        """Returns a list of the selected item IDs in the Treeview."""
+        return self.tree.selection()
+
+    def get_selected_item_id(self):
+        """Returns the first selected item ID, or None."""
+        selection = self.tree.selection()
+        return selection[0] if selection else None
+
+    def get_track_data_by_iid(self, iid):
+        """Gets the internal track data dictionary associated with a Treeview item ID."""
+        return self._iid_map.get(iid)
+
+    def get_selected_track_data(self):
+        """Returns a list of track data dictionaries for selected items."""
+        selected_data = []
+        for iid in self.tree.selection():
+            data = self.get_track_data_by_iid(iid)
+            if data:
+                selected_data.append(data)
+        return selected_data
+
+    def update_track_display(self, iid, track_data):
+        """Updates a single row in the treeview."""
+        if iid in self._iid_map:
+            # Always recalculate the # column index for correct display
+            # Find the visible index of this iid
+            all_iids = list(self.tree.get_children())
+            try:
+                row_index = all_iids.index(iid)
+            except ValueError:
+                row_index = None
+            values = [row_index + 1 if col == '#' and row_index is not None else self.get_formatted_value(track_data, col) for col in AVAILABLE_COLUMNS]
+            tag = "missing" if not track_data.get('exists', True) else "found"
+            self.tree.item(iid, values=values, tags=(tag,))
+            # Update the map reference just in case the dict instance changed (it shouldn't if modified in place)
+            self._iid_map[iid] = track_data
+
+    # --- Event Handlers ---
+
+    def on_double_click(self, event):
+        """Handles double-clicking a track - starts pre-listening."""
+        iid = self.tree.identify_row(event.y)
+        if iid:
+            track_data = self.get_track_data_by_iid(iid)
+            if track_data:
+                self.app.start_playback(track_data)
+
+
+    def on_tree_select(self, event=None):
+        """Update prelisten info display when selection changes."""
+        iid = self.get_selected_item_id() # Get first selected
+        if iid:
+             track_data = self.get_track_data_by_iid(iid)
+             self.app.update_prelisten_info(track_data)
+        else:
+             # Selection cleared, but don't stop playback, just clear info display if nothing is playing
+             if not self.app.currently_playing_path:
+                  self.app.reset_prelisten_ui()
+
+    def show_context_menu(self, event):
+        """Shows the right-click context menu."""
+        # Detect if right-clicked on tab area
+        if event.widget == self.notebook:
+            # Right-clicked on the tab bar, show tab rename
+            current_tab = self.app.get_current_tab()
+            if current_tab:
+                current_tab.context_rename_tab()
+            return
+        iid = self.tree.identify_row(event.y)
+        if iid:
+            # Select the item under the cursor if it wasn't already selected
+            if iid not in self.tree.selection():
+                self.tree.selection_set(iid) # Select only this item
+                # self.tree.selection_add(iid) # Or add to selection
+
+            self.context_menu.post(event.x_root, event.y_root)
+        # else: # Optional: show a different menu if clicking empty space?
+        #     pass
+
+    # --- Track Manipulation ---
+
+    def add_tracks(self, track_data_list):
+        """Adds multiple tracks (list of dicts) to the internal data and refreshes view."""
+        # Could add checks for duplicates here if desired
+        newly_added_iids = []
+        for track_info in track_data_list:
+             # Ensure necessary keys exist, even if blank
+             track_info.setdefault('artist', 'Unknown Artist')
+             track_info.setdefault('title', os.path.splitext(os.path.basename(track_info.get('path','')))[0] if track_info.get('path') else 'Unknown Title')
+             track_info.setdefault('path', None)
+             track_info.setdefault('exists', os.path.exists(track_info['path']) if track_info['path'] else False)
+             # Add other defaults...
+
+             self._track_data.append(track_info)
+
+             # Insert directly into treeview for immediate feedback (might be slow for huge additions)
+             values = [self.get_formatted_value(track_info, col) for col in AVAILABLE_COLUMNS]
+             tag = "missing" if not track_info.get('exists', True) else "found"
+             iid = self.tree.insert("", tk.END, values=values, tags=(tag,))
+             self._iid_map[iid] = track_info
+             newly_added_iids.append(iid)
+
+
+        # self.refresh_display(keep_selection=False) # Full refresh might be better for consistency
+        self.mark_dirty()
+        # Optionally scroll to and select the newly added items
+        if newly_added_iids:
+             self.tree.selection_set(newly_added_iids)
+             self.tree.see(newly_added_iids[-1]) # Scroll to the last added item
+
+
+    def add_files(self):
+        """Opens dialog to add audio files."""
+        filepaths = filedialog.askopenfilenames(
+            title="Add Audio Files",
+            filetypes=[("Audio Files", "*.mp3 *.wav *.ogg *.flac *.m4a *.aac"), ("All Files", "*.*")]
+        )
+        if filepaths:
+            self.app.set_status(f"Scanning {len(filepaths)} files...")
+            new_tracks = []
+            # Process in chunks or thread for large additions? For now, direct.
+            for i, path in enumerate(filepaths):
+                 self.app.set_status(f"Scanning file {i+1}/{len(filepaths)}: {os.path.basename(path)}")
+                 self.app.update_idletasks() # Allow UI to update status
+                 metadata = load_audio_metadata(path)
+                 if metadata['duration'] is None:
+                     self.app.set_status(f"Warning: No duration for {os.path.basename(path)}")
+                 new_tracks.append(metadata)
+
+            self.add_tracks(new_tracks)
+            self.app.set_status(f"Added {len(new_tracks)} tracks.")
+
+    def add_folder(self):
+        """Opens dialog to add all audio files from a folder (recursively)."""
+        folderpath = filedialog.askdirectory(title="Add Folder Contents")
+        if not folderpath:
+            return
+
+        self.app.set_status(f"Scanning folder: {folderpath}...")
+        self.app.update_idletasks()
+        
+        new_tracks = []
+        file_count = 0
+        audio_extensions = {'.mp3', '.wav', '.ogg', '.flac', '.m4a', '.aac'} # Add more if needed
+
+        for root, _, files in os.walk(folderpath):
+            for filename in files:
+                if os.path.splitext(filename)[1].lower() in audio_extensions:
+                    file_count += 1
+                    filepath = os.path.join(root, filename)
+                    self.app.set_status(f"Scanning file {file_count}: {filename}")
+                    self.app.update_idletasks()
+                    metadata = load_audio_metadata(filepath)
+                    if metadata['duration'] is None:
+                        self.app.set_status(f"Warning: No duration for {filename}")
+                    new_tracks.append(metadata)
+
+        if new_tracks:
+            self.add_tracks(new_tracks)
+            self.app.set_status(f"Added {len(new_tracks)} tracks from folder.")
+        else:
+            self.app.set_status(f"No supported audio files found in folder: {folderpath}")
+
+
+    def remove_selected_tracks(self):
+        """Removes selected tracks from the list and Treeview."""
+        selected_iids = self.tree.selection()
+        if not selected_iids:
+            return
+
+        items_to_remove_from_data = []
+        for iid in selected_iids:
+            track_data = self.get_track_data_by_iid(iid)
+            if track_data:
+                 items_to_remove_from_data.append(track_data)
+            # Remove from tree immediately
+            self.tree.delete(iid)
+            if iid in self._iid_map:
+                 del self._iid_map[iid]
+
+        # Remove from the internal data list
+        # This is inefficient (O(n*m)), better to rebuild _track_data or use indices
+        new_track_data = [track for track in self._track_data if track not in items_to_remove_from_data]
+        self._track_data = new_track_data
+
+        # No need for full refresh if items deleted directly
+        # self.refresh_display(keep_selection=False)
+        self.mark_dirty()
+        self.app.set_status(f"Removed {len(selected_iids)} track(s).")
+
+    def move_selected_up(self):
+         """Moves selected items one position up in the Treeview."""
+         selection = self.tree.selection()
+         if not selection: return
+
+         # Process selections from top to bottom to avoid index issues
+         # Get all children once to determine indices
+         all_children = self.tree.get_children('')
+         
+         moved_count = 0
+         for iid in selection:
+              current_index = self.tree.index(iid)
+              if current_index > 0:
+                  # Check if the item above is also selected, if so, skip moving this one relative to it
+                  prev_iid = all_children[current_index - 1]
+                  if prev_iid not in selection:
+                      self.tree.move(iid, '', current_index - 1)
+                      # Update internal _track_data order to match
+                      track_data = self.get_track_data_by_iid(iid)
+                      if track_data:
+                          # Find the actual index in _track_data (slow, needs optimization)
+                          try:
+                             data_index = self._track_data.index(track_data)
+                             # Ensure we don't move past beginning or into another selected block being moved
+                             if data_index > 0:
+                                 # Find the data of the item visually above
+                                 prev_track_data = self.get_track_data_by_iid(prev_iid)
+                                 if prev_track_data:
+                                     try:
+                                         prev_data_index = self._track_data.index(prev_track_data)
+                                         # Swap in _track_data if indices match visual move
+                                         if data_index == prev_data_index + 1:
+                                             self._track_data.pop(data_index)
+                                             self._track_data.insert(prev_data_index, track_data)
+                                             moved_count+=1
+                                     except ValueError: pass # Target data not found?
+                          except ValueError: pass # Current data not found?
+
+         if moved_count > 0:
+              self.mark_dirty()
+              # Renumbering might be needed here if '#' column is critical
+              # self.refresh_display(keep_selection=True) # Easier but resets view state
+
+    def move_selected_down(self):
+         """Moves selected items one position down in the Treeview."""
+         selection = self.tree.selection()
+         if not selection: return
+
+         # Process selections from bottom to top
+         all_children = self.tree.get_children('')
+         max_index = len(all_children) - 1
+
+         moved_count = 0
+         for iid in reversed(selection): # Iterate backwards
+             current_index = self.tree.index(iid)
+             if current_index < max_index:
+                 # Check if the item below is also selected
+                 next_iid = all_children[current_index + 1]
+                 if next_iid not in selection:
+                     self.tree.move(iid, '', current_index + 1)
+                     # Update internal _track_data order (similar logic to move_up, but reversed)
+                     track_data = self.get_track_data_by_iid(iid)
+                     if track_data:
+                         try:
+                             data_index = self._track_data.index(track_data)
+                             if data_index < len(self._track_data) - 1:
+                                 next_track_data = self.get_track_data_by_iid(next_iid)
+                                 if next_track_data:
+                                     try:
+                                         next_data_index = self._track_data.index(next_track_data)
+                                         if data_index == next_data_index - 1:
+                                              # Move item down in _track_data
+                                              item_to_move = self._track_data.pop(data_index)
+                                              self._track_data.insert(data_index + 1, item_to_move) # Insert after original next item
+                                              moved_count+=1
+                                     except ValueError: pass
+                         except ValueError: pass
+         
+         if moved_count > 0:
+             self.mark_dirty()
+             # Renumbering might be needed here if '#' column is critical
+             # self.refresh_display(keep_selection=True)
+
+
+    def _sort_internal_data(self, column_id, reverse):
+        """Sorts the internal _track_data list based on a column."""
+        if not column_id: return
+
+        def sort_key(track):
+            value = track.get(column_id.lower())
+            # Handle different types for sorting
+            if value is None:
+                return -1 if column_id == 'Duration' else '' # Sort None durations first, empty strings first
+            if column_id in ('#', 'TrackNumber', 'Bitrate'):
+                try: return int(value)
+                except (ValueError, TypeError): return 0
+            if column_id == 'Duration':
+                 try: return float(value)
+                 except (ValueError, TypeError): return -1.0
+            if column_id == 'Exists':
+                 return bool(value) # False then True
+            # Default: case-insensitive string sort
+            return str(value).lower()
+
+        try:
+            self._track_data.sort(key=sort_key, reverse=reverse)
+        except Exception as e:
+            print(f"Error sorting data: {e}") # Avoid crashing on unexpected data
+
+
+    def sort_column(self, column_id):
+        """Sorts the treeview by the clicked column header."""
+        # Basic toggle sorting direction (needs state per column)
+        # For simplicity, let's just sort ascending first time, then maybe toggle later
+        # This implementation sorts the *internal data* then refreshes the view
+        
+        # Basic toggle: Does not store state per column yet
+        current_heading = self.tree.heading(column_id)
+        order = current_heading.get("command", "") # Store sort order here? Hacky.
+        reverse = False
+        if f" {column_id}_asc" in str(order): # Simple state check
+            reverse = True
+            new_command = lambda c=column_id: self.sort_column(c) # Reset command for next click
+            # Update visual indicator if possible (ttk doesn't have built-in arrows)
+        else:
+            reverse = False
+            new_command = lambda c=column_id: self.sort_column(c) # Store state in command itself
+            # Hack: Store state indicating ascending sort was just done
+            # self.tree.heading(column_id, command=str(new_command) + f" {column_id}_asc")
+
+        self.refresh_display(sort_col=column_id, reverse_sort=reverse, keep_selection=False)
+        self.app.set_status(f"Sorted by {column_id} {'Descending' if reverse else 'Ascending'}")
+
+
+    def filter_tracks(self, *args):
+        """Filters the Treeview based on the search entry."""
+        # Debounce this? Could be slow on huge lists if called on every keypress
+        # For now, refresh directly
+        self.refresh_display(keep_selection=False)
+
+    # --- Context Menu Actions ---
+
+    def context_prelisten(self):
+        iid = self.get_selected_item_id()
+        if iid:
+            track_data = self.get_track_data_by_iid(iid)
+            if track_data:
+                 self.app.start_playback(track_data)
+
+    def context_copy(self):
+        self.app.copy_selected() # Use global copy handler
+
+    def context_remove(self):
+        self.remove_selected_tracks()
+
+    def context_edit_metadata(self):
+        selected_iids = self.get_selected_item_ids()
+        if not selected_iids: return
+        if len(selected_iids) > 1:
+             messagebox.showinfo("Edit Metadata", "Please select only one track to edit metadata.")
+             return
+
+        iid = selected_iids[0]
+        track_data = self.get_track_data_by_iid(iid)
+        if not track_data or not track_data['path']:
+             messagebox.showerror("Metadata Error", "Cannot edit metadata: Track data or path is missing.")
+             return
+
+        if not track_data['exists']:
+             messagebox.showwarning("Metadata Warning", "Cannot edit metadata: File does not exist.")
+             return
+
+        dialog = MetadataEditDialog(self, track_data)
+        if dialog.result: # result contains the updated track_data dict
+            # 1. Save changes to the audio file using save_audio_metadata from metadata_utils.py
+            try:
+                success, error = save_audio_metadata(track_data['path'], dialog.result)
+                if not success:
+                    raise Exception(error)
+                self.app.set_status(f"Metadata saved for: {os.path.basename(track_data['path'])}")
+
+                # 2. Update internal data dictionary (modify in place)
+                # Re-read duration/format in case they changed (unlikely but possible)
+                updated_meta = load_audio_metadata(track_data['path']) # Re-read all info
+                # Only update the fields we allow editing + potentially changed info
+                track_data.update(updated_meta) # Overwrite original dict with fresh data
+
+                # 3. Update Treeview display
+                self.update_track_display(iid, track_data)
+                self.mark_dirty() # Editing metadata might make playlist content effectively different
+
+            except Exception as e:
+                import traceback
+                print("[ERROR] Metadata Save Error:")
+                print(f"  Path: {track_data['path']}")
+                print(f"  Dialog Result: {dialog.result}")
+                traceback.print_exc()
+                messagebox.showerror("Metadata Save Error", f"Could not save metadata for:\n{track_data['path']}\n\nError: {e}")
+                self.app.set_status("Metadata save failed.")
+                print(f"[ERROR] Metadata Save Error: {e}")
+
+    def context_rename_file_manual(self):
+        selected_iids = self.get_selected_item_ids()
+        if not selected_iids: return
+        if len(selected_iids) > 1:
+            messagebox.showinfo("Rename File", "Please select only one track to rename.")
+            return
+        iid = selected_iids[0]
+        track_data = self.get_track_data_by_iid(iid)
+        if not track_data or not track_data['path']:
+            messagebox.showerror("Rename Error", "Cannot rename: Track data or path is missing.")
+            return
+        old_path = track_data['path']
+        new_path = simpledialog.askstring("Rename File", "Enter the new file path (including extension):", initialvalue=old_path, parent=self)
+        if not new_path or new_path == old_path:
+            self.app.set_status("Rename cancelled.")
+            return
+        invalid_chars = ['/', '\\', ':']
+        if any(char in os.path.basename(new_path) for char in invalid_chars):
+            messagebox.showerror("Rename Error", "New filename cannot contain path separators or invalid characters.")
+            return
+        try:
+            if track_data['exists']:
+                try:
+                    shutil.move(old_path, new_path)
+                    self.app.set_status(f"Renamed '{os.path.basename(old_path)}' to '{os.path.basename(new_path)}'")
+                    track_data['exists'] = True
+                except Exception as e:
+                    messagebox.showerror("Rename Failed", f"Could not rename file:\n{old_path}\n\nError: {e}")
+                    self.app.set_status("File rename failed.")
+                    track_data['exists'] = os.path.exists(old_path)
+                    self.update_track_display(iid, track_data)
+                    return
+            else:
+                self.app.set_status(f"Updated non-existent playlist entry path to '{os.path.basename(new_path)}'")
+            track_data['path'] = new_path
+            if track_data.get('title') == os.path.splitext(os.path.basename(old_path))[0]:
+                track_data['title'] = os.path.splitext(os.path.basename(new_path))[0]
+            # Preserve tracknumber if present
+            meta = load_audio_metadata(new_path)
+            if 'tracknumber' in meta:
+                track_data['tracknumber'] = meta.get('tracknumber', track_data.get('tracknumber', ''))
+            # After renaming, recheck existence and duration
+            track_data['exists'] = meta.get('exists', False)
+            track_data['duration'] = meta.get('duration', 0)
+            self.update_track_display(iid, track_data)
+            self.mark_dirty()
+        except Exception as e:
+            messagebox.showerror("Rename Failed", f"Could not update playlist entry:\n{old_path}\n\nError: {e}")
+            self.app.set_status("File rename failed.")
+            track_data['exists'] = os.path.exists(old_path)
+            self.update_track_display(iid, track_data)
+
+    def context_rename_file_browse(self):
+        selected_iids = self.get_selected_item_ids()
+        if not selected_iids: return
+        if len(selected_iids) > 1:
+            messagebox.showinfo("Rename File", "Please select only one track to rename.")
+            return
+        iid = selected_iids[0]
+        track_data = self.get_track_data_by_iid(iid)
+        if not track_data or not track_data['path']:
+            messagebox.showerror("Rename Error", "Cannot rename: Track data or path is missing.")
+            return
+        old_path = track_data['path']
+        directory = os.path.dirname(old_path)
+        initialfile = os.path.basename(old_path)
+        new_path = filedialog.askopenfilename(initialdir=directory, initialfile=initialfile, title="Select New File Path", parent=self)
+        if not new_path or new_path == old_path:
+            self.app.set_status("Rename cancelled.")
+            return
+        invalid_chars = ['/', '\\', ':']
+        if any(char in os.path.basename(new_path) for char in invalid_chars):
+            messagebox.showerror("Rename Error", "New filename cannot contain path separators or invalid characters.")
+            return
+        try:
+            if track_data['exists']:
+                try:
+                    shutil.move(old_path, new_path)
+                    self.app.set_status(f"Renamed '{os.path.basename(old_path)}' to '{os.path.basename(new_path)}'")
+                    track_data['exists'] = True
+                except Exception as e:
+                    messagebox.showerror("Rename Failed", f"Could not rename file:\n{old_path}\n\nError: {e}")
+                    self.app.set_status("File rename failed.")
+                    track_data['exists'] = os.path.exists(old_path)
+                    self.update_track_display(iid, track_data)
+                    return
+            else:
+                self.app.set_status(f"Updated non-existent playlist entry path to '{os.path.basename(new_path)}'")
+            track_data['path'] = new_path
+            if track_data.get('title') == os.path.splitext(os.path.basename(old_path))[0]:
+                track_data['title'] = os.path.splitext(os.path.basename(new_path))[0]
+            # Preserve tracknumber if present
+            meta = load_audio_metadata(new_path)
+            if 'tracknumber' in meta:
+                track_data['tracknumber'] = meta.get('tracknumber', track_data.get('tracknumber', ''))
+            # After renaming, recheck existence and duration
+            track_data['exists'] = meta.get('exists', False)
+            track_data['duration'] = meta.get('duration', 0)
+            self.update_track_display(iid, track_data)
+            self.mark_dirty()
+        except Exception as e:
+            messagebox.showerror("Rename Failed", f"Could not update playlist entry:\n{old_path}\n\nError: {e}")
+            self.app.set_status("File rename failed.")
+            track_data['exists'] = os.path.exists(old_path)
+            self.update_track_display(iid, track_data)
+
+    def context_open_location(self):
+        iid = self.get_selected_item_id()
+        if iid:
+            track_data = self.get_track_data_by_iid(iid)
+            if track_data and track_data['path']:
+                 open_file_location(track_data['path'])
+            else:
+                 messagebox.showerror("Error", "Path information is missing for this item.")
+
+    def context_check_existence(self):
+        """Re-checks existence for selected files."""
+        selected_iids = self.get_selected_item_ids()
+        for iid in selected_iids:
+            track_data = self.get_track_data_by_iid(iid)
+            if not track_data or not track_data['path']:
+                continue
+            meta = load_audio_metadata(track_data['path'])
+            track_data['exists'] = meta.get('exists', False)
+            track_data['duration'] = meta.get('duration', 0)
+            self.update_track_display(iid, track_data)
+        self.app.set_status("Checked file existence and duration.")
+
+
+    # --- Data Loading/Saving ---
+
+    def load_playlist_from_file(self, filepath):
+        """Loads tracks from an M3U/M3U8 file and refreshes all metadata."""
+        try:
+            with open(filepath, 'r', encoding=M3U_ENCODING) as f:
+                lines = f.readlines()
+            new_tracks = []
+            for line in lines:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                abs_path = os.path.abspath(os.path.join(os.path.dirname(filepath), line)) if not os.path.isabs(line) else line
+                meta = load_audio_metadata(abs_path)
+                new_tracks.append(meta)
+            self._track_data = new_tracks
+            self.refresh_display()
+            self.is_dirty = False
+            self.update_tab_title()
+            return True
+        except Exception as e:
+            return False
+
+    def save_playlist(self, force_save_as=False):
+        """Saves the playlist to M3U8 format."""
+        target_path = self.filepath
+        if force_save_as or not target_path:
+            target_path = filedialog.asksaveasfilename(
+                title="Save Playlist As",
+                defaultextension=".m3u8",
+                filetypes=[("M3U Playlist", "*.m3u8"), ("All Files", "*.*")],
+                initialfile=os.path.basename(self.filepath) if self.filepath else "playlist.m3u8"
+            )
+            if not target_path:
+                self.app.set_status("Save cancelled.")
+                return False # Indicate save was cancelled
+
+        self.app.set_status(f"Saving playlist: {os.path.basename(target_path)}...")
+        try:
+            playlist_dir = os.path.dirname(target_path)
+            os.makedirs(playlist_dir, exist_ok=True) # Ensure directory exists
+
+            with open(target_path, 'w', encoding=M3U_ENCODING) as f:
+                f.write("#EXTM3U\n") # Standard M3U header
+                # Use the current order from the Treeview (or _track_data if no filter)
+                track_paths_in_order = [self.get_track_data_by_iid(iid)['path'] for iid in self.tree.get_children('')]
+                # Or use self._track_data if filtering shouldn't affect save order
+                # track_paths_in_order = [track['path'] for track in self._track_data]
+
+                for track_path in track_paths_in_order:
+                    # Attempt to make paths relative to the playlist file
+                    try:
+                        relative_path = os.path.relpath(track_path, playlist_dir)
+                    except ValueError:
+                        # Happens if paths are on different drives (Windows)
+                        relative_path = track_path # Use absolute path
+
+                    # At the start of start_playback
+                    try:
+                        if pygame.mixer.get_init() is None:
+                            print("[WARN] Mixer not actually initialized at playback time. Attempting re-init.")
+                            pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=2048)
+                            print("[INFO] Mixer re-initialized at playback time.")
+                            self.pygame_initialized = True
+                    except Exception as e:
+                        print(f"[ERROR] Failed to re-initialize mixer at playback time: {e}")
+                        self.set_status(f"Audio Error: Could not initialize mixer for playback: {e}")
+                        return
+                    f.write(relative_path + "\n")
+
+            self.filepath = target_path # Update file path if saved successfully
+            self.mark_dirty(False)
+            self.update_tab_title() # Update title to remove '*' and reflect new name if 'Save As'
+            self.app.set_status(f"Playlist saved: {os.path.basename(target_path)}")
+            return True
+
+        except Exception as e:
+            self.app.set_status(f"Error saving playlist {os.path.basename(target_path)}: {e}")
+            messagebox.showerror("Save Error", f"Could not save playlist to:\n{target_path}\n\nError: {e}")
+            return False
+
+
+    # --- Treeview Display and Interaction ---
+
+    def setup_columns(self):
+        """Sets up the Treeview columns based on AVAILABLE_COLUMNS."""
+        # Configure all potential columns once
+        col_widths = {'#': 40, 'Artist': 150, 'Title': 250, 'Album': 150, 'Genre': 100, 'TrackNumber': 40, 'Duration': 60, 'Path': 300, 'Exists': 50, 'Bitrate':60, 'Format': 60}
+        col_anchors = {'#': 'e', 'TrackNumber': 'e', 'Duration': 'e', 'Exists': 'center', 'Bitrate':'e'}
+
+        for col in AVAILABLE_COLUMNS:
+            self.tree.heading(col, text=col)  # No sort command
+            self.tree.column(col, width=col_widths.get(col, 100), anchor=col_anchors.get(col, 'w'), stretch=tk.NO if col in ['#','Duration','Exists','TrackNumber','Bitrate','Format'] else tk.YES)
+
+        # Apply the currently visible columns
+        self.update_columns(self.visible_columns)
+
+
+    def update_columns(self, visible_column_ids):
+        """Updates which columns are visible in the Treeview."""
+        self.visible_columns = visible_column_ids
+        self.tree['displaycolumns'] = self.visible_columns
+        # No need to re-setup headings/widths, just visibility
+
+
+    def mark_dirty(self, dirty=True):
+        """Sets the dirty state and updates the tab title."""
+        if self.is_dirty != dirty:
+            self.is_dirty = dirty
+            self.update_tab_title()
+
+    def find_next(self, event=None, reverse=False):
+        """Find the next (or previous if reverse) occurrence of the search string in the playlist."""
+        find_term = self.find_var.get().lower()
+        if not find_term:
+            self.set_status("Enter text to find.")
+            return
+        # Build a list of matching iids if not already built or if search changed
+        if not hasattr(self, '_last_find_term') or self._last_find_term != find_term:
+            self._find_matches = []
+            for iid, track in self._iid_map.items():
+                for col in self.visible_columns:
+                    val = self.get_formatted_value(track, col)
+                    if find_term in str(val).lower():
+                        self._find_matches.append(iid)
+                        break
+            self._find_index = -1
+            self._last_find_term = find_term
+        if not self._find_matches:
+            self.set_status(f"No matches for '{find_term}'.")
+            self.tree.selection_remove(self.tree.selection())
+            return
+        # Move to next/prev match
+        if reverse:
+            self._find_index = (self._find_index - 1) % len(self._find_matches)
+        else:
+            self._find_index = (self._find_index + 1) % len(self._find_matches)
+        iid = self._find_matches[self._find_index]
+        self.tree.selection_set(iid)
+        self.tree.see(iid)
+        self.set_status(f"Match {self._find_index+1} of {len(self._find_matches)} for '{find_term}'.")
+
+    def clear_find(self):
+        self.find_var.set("")
+        self.tree.selection_remove(self.tree.selection())
+        self._find_matches = []
+        self._find_index = -1
+
+    def paste_after_selected(self):
+        """Paste clipboard tracks after the currently selected track(s)."""
+        if not self.app.clipboard:
+            self.app.set_status("Clipboard is empty.")
+            return
+        selected = list(self.tree.selection())
+        if selected:
+            # Insert after last selected
+            last_iid = selected[-1]
+            last_index = self.tree.index(last_iid)
+            insert_index = last_index + 1
+        else:
+            # No selection, append at end
+            insert_index = len(self._track_data)
+        for track in self.app.clipboard:
+            track_copy = track.copy()
+            self._track_data.insert(insert_index, track_copy)
+            values = [self.get_formatted_value(track_copy, col) for col in AVAILABLE_COLUMNS]
+            tag = "missing" if not track_copy.get('exists', True) else "found"
+            iid = self.tree.insert("", insert_index, values=values, tags=(tag,))
+            self._iid_map[iid] = track_copy
+            insert_index += 1
+        self.mark_dirty()
+        self.tree.selection_set(self.tree.get_children()[insert_index - len(self.app.clipboard):insert_index])
+        self.tree.see(self.tree.get_children()[insert_index - 1])
+        self.app.set_status(f"Pasted {len(self.app.clipboard)} track(s) after selection.")
+
+# --- Dialog Windows ---
+
+class ColumnChooserDialog(simpledialog.Dialog):
+    def __init__(self, parent, all_columns, selected_columns):
+        self.all_columns = all_columns
+        self.selected_columns = selected_columns
+        self.vars = {}
+        self.result = None
+        super().__init__(parent, "Customize Columns")
+
+    def body(self, master):
+        ttk.Label(master, text="Select columns to display:").grid(row=0, sticky='w', columnspan=2, pady=5)
+
+        # Use Checkbuttons for selection
+        row = 1
+        col = 0
+        for idx, column_id in enumerate(self.all_columns):
+            self.vars[column_id] = tk.BooleanVar()
+            if column_id in self.selected_columns:
+                self.vars[column_id].set(True)
+            cb = ttk.Checkbutton(master, text=column_id, variable=self.vars[column_id])
+            cb.grid(row=row, column=col, sticky='w', padx=5, pady=2)
+            col += 1
+            if col > 2: # Adjust number of columns in dialog
+                col = 0
+                row += 1
+        return None # Focus default
+
+    def apply(self):
+        self.result = [col for col in self.all_columns if self.vars[col].get()]
+        # Basic validation: ensure at least one column is selected?
+        if not self.result:
+            messagebox.showwarning("No Columns", "Please select at least one column to display.", parent=self)
+            self.result = None # Prevent closing dialog
+
+
+class MetadataEditDialog(simpledialog.Dialog):
+    def __init__(self, parent, track_data):
+        self.track_data = track_data.copy() # Work on a copy
+        self.entries = {}
+        self.result = None
+        super().__init__(parent, f"Edit Metadata: {os.path.basename(track_data.get('path',''))}")
+
+    def body(self, master):
+        fields = ['Title', 'Artist', 'Album', 'Genre', 'TrackNumber']
+        row = 0
+        for field in fields:
+            key = field.lower()
+            ttk.Label(master, text=f"{field}:").grid(row=row, column=0, sticky='e', padx=5, pady=3)
+            var = tk.StringVar(value=self.track_data.get(key, ''))
+            entry = ttk.Entry(master, textvariable=var, width=40)
+            entry.grid(row=row, column=1, sticky='w', padx=5, pady=3)
+            self.entries[key] = var
+            if row == 0: entry.focus_set() # Focus Title field
+            row += 1
+        return None # Focus handled above
+
+    def apply(self):
+        self.result = {}
+        valid = True
+        for key, var in self.entries.items():
+            value = var.get().strip()
+            # Add validation if needed (e.g., track number should be integer)
+            if key == 'tracknumber' and value:
+                try:
+                    int(value)
+                except ValueError:
+                    messagebox.showerror("Invalid Input", "Track Number must be a whole number.", parent=self)
+                    valid = False
+                    break # Stop validation
+            self.result[key] = value
+
+        if valid:
+             # Add non-editable fields back for context if needed by caller
+             self.result['path'] = self.track_data.get('path')
+             self.result['duration'] = self.track_data.get('duration')
+             self.result['exists'] = self.track_data.get('exists')
+             # ... any other fields needed by the caller after update
+             self.result['__force_refresh_number'] = True
+        else:
+             self.result = None # Indicate failure
+
+
+
+# --- Main Execution ---
+
+if __name__ == "__main__":
+    app = PlaylistManagerApp()
+    app.mainloop()
