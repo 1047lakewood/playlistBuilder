@@ -149,6 +149,7 @@ class PlaylistTab(ttk.Frame):
         self.context_menu.add_command(label="Rename by Browsing", command=self.context_rename_file_browse)
         self.context_menu.add_separator()
         self.context_menu.add_command(label="Delete", command=self.context_remove)
+        self.context_menu.add_separator()
         self.context_menu.add_command(label="Copy", command=self.context_copy)
         self.context_menu.add_command(label="Cut", command=self.context_cut)
         self.context_menu.add_command(label="Paste", command=self.paste_after_selected)
