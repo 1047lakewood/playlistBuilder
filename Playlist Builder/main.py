@@ -178,6 +178,15 @@ class PlaylistTab(ttk.Frame):
         except (ImportError, Exception) as e:
             print(f"[WARN] Drag-and-drop from outside is disabled: {e}")
 
+        # --- Tooltip state for Path column ---
+        self._path_tooltip = None
+        self._path_tooltip_label = None
+        self.tree.bind('<Motion>', self._on_tree_motion)
+        self.tree.bind('<Leave>', self._on_tree_leave)
+        # --- Ctrl+S Save Shortcut ---
+        self.bind_all('<Control-s>', self._on_ctrl_s)
+        self.bind_all('<Control-S>', self._on_ctrl_s)
+
     def context_rename_tab(self):
         new_name = simpledialog.askstring("Rename Tab", "Enter new tab name:", initialvalue=self.tab_display_name, parent=self)
         if new_name:
@@ -1126,6 +1135,57 @@ class PlaylistTab(ttk.Frame):
         elif not iid:
             self._dnd_hover_iid = None
         return event.action
+
+    def _on_tree_motion(self, event):
+        # Show tooltip with full file path if hovering over Path cell
+        region = self.tree.identify('region', event.x, event.y)
+        if region != 'cell':
+            self._hide_path_tooltip()
+            return
+        col = self.tree.identify_column(event.x)
+        col_num = int(col.replace('#','')) - 1
+        if col_num >= len(self.visible_columns):
+            self._hide_path_tooltip()
+            return
+        col_name = self.visible_columns[col_num]
+        if col_name != 'Path':
+            self._hide_path_tooltip()
+            return
+        row_id = self.tree.identify_row(event.y)
+        if not row_id:
+            self._hide_path_tooltip()
+            return
+        track = self._iid_map.get(row_id)
+        if not track or not track.get('path'):
+            self._hide_path_tooltip()
+            return
+        path = track['path']
+        # If tooltip is already showing with same path, do nothing
+        if self._path_tooltip and self._path_tooltip_label and self._path_tooltip_label.cget('text') == path:
+            return
+        self._show_path_tooltip(event.x_root, event.y_root, path)
+
+    def _show_path_tooltip(self, x, y, text):
+        self._hide_path_tooltip()
+        self._path_tooltip = tk.Toplevel(self)
+        self._path_tooltip.wm_overrideredirect(True)
+        self._path_tooltip.wm_geometry(f'+{x+15}+{y+10}')
+        label = tk.Label(self._path_tooltip, text=text, bg='#ffffe0', relief='solid', borderwidth=1, font=(None, 10))
+        label.pack(ipadx=4, ipady=2)
+        self._path_tooltip_label = label
+
+    def _hide_path_tooltip(self):
+        if self._path_tooltip:
+            self._path_tooltip.destroy()
+            self._path_tooltip = None
+            self._path_tooltip_label = None
+
+    def _on_tree_leave(self, event):
+        self._hide_path_tooltip()
+
+    def _on_ctrl_s(self, event=None):
+        self.save_playlist()
+        return "break"
 
 
 # --- Dialog Windows ---
