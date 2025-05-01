@@ -131,6 +131,12 @@ class PlaylistTab(ttk.Frame):
         self.tree.bind("<Up>", self._on_arrow_up)
         self.tree.bind("<Down>", self._on_arrow_down)
         self.find_entry.bind('<Return>', self.find_next)
+        # --- ROW NUMBER AUTO-UPDATE ---
+        self.tree.bind('<<TreeviewSelect>>', self._auto_update_row_numbers, add='+')
+        self.tree.bind('<ButtonRelease-1>', self._auto_update_row_numbers, add='+')
+        self.tree.bind('<<Paste>>', self._auto_update_row_numbers, add='+')  # Custom event, see below
+        self.tree.bind('<<Cut>>', self._auto_update_row_numbers, add='+')
+        self.tree.bind('<KeyRelease>', self._auto_update_row_numbers, add='+')
         # Right-click context menu: add Paste
         self.context_menu = tk.Menu(self, tearoff=0)
         self.context_menu.add_command(label="Pre-listen", command=self.context_prelisten)
@@ -437,9 +443,8 @@ class PlaylistTab(ttk.Frame):
         new_track_data = [track for track in self._track_data if track not in items_to_remove_from_data]
         self._track_data = new_track_data
 
-        # No need for full refresh if items deleted directly
-        # self.refresh_display(keep_selection=False)
         self.mark_dirty()
+        self._auto_update_row_numbers()  # Force row number update after removal
         self.app.set_status(f"Removed {len(selected_iids)} track(s).")
 
     def move_selected_up(self):
@@ -968,9 +973,18 @@ class PlaylistTab(ttk.Frame):
             self._iid_map[iid] = track_copy
             insert_index += 1
         self.mark_dirty()
+        self._auto_update_row_numbers()  # Force row number update after paste
         self.tree.selection_set(self.tree.get_children()[insert_index - len(self.app.clipboard):insert_index])
         self.tree.see(self.tree.get_children()[insert_index - 1])
         self.app.set_status(f"Pasted {len(self.app.clipboard)} track(s) after selection.")
+
+    def _auto_update_row_numbers(self, event=None):
+        # This ensures that the '#' column is always up-to-date after any change
+        for idx, iid in enumerate(self.tree.get_children()):
+            values = list(self.tree.item(iid, 'values'))
+            if len(values) > 0:
+                values[0] = idx + 1
+                self.tree.item(iid, values=values)
 
     def _on_tree_press(self, event):
         # Only start drag if plain left-click (no shift/ctrl modifiers)
