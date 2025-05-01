@@ -971,10 +971,21 @@ class PlaylistTab(ttk.Frame):
         self.app.set_status(f"Pasted {len(self.app.clipboard)} track(s) after selection.")
 
     def _on_tree_press(self, event):
+        # Only start drag if plain left-click (no shift/ctrl modifiers)
+        if (event.state & 0x0001) or (event.state & 0x0004):  # Shift or Control pressed
+            # Let default selection logic handle shift/ctrl multi-select
+            self._dragged_iid = None
+            self._dragged_index = None
+            return
         iid = self.tree.identify_row(event.y)
         if iid:
-            self._dragged_iid = iid
-            self._dragged_index = self.tree.index(iid)
+            # Only start drag if clicking on a selected row and no modifiers
+            if iid in self.tree.selection():
+                self._dragged_iid = iid
+                self._dragged_index = self.tree.index(iid)
+            else:
+                self._dragged_iid = None
+                self._dragged_index = None
         else:
             self._dragged_iid = None
             self._dragged_index = None
