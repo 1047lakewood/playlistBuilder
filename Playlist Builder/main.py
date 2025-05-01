@@ -128,6 +128,8 @@ class PlaylistTab(ttk.Frame):
         self.tree.bind("<Control-C>", lambda e: self.app.copy_selected())
         self.tree.bind("<Control-v>", lambda e: self.paste_after_selected())
         self.tree.bind("<Control-V>", lambda e: self.paste_after_selected())
+        self.tree.bind("<Up>", self._on_arrow_up)
+        self.tree.bind("<Down>", self._on_arrow_down)
         self.find_entry.bind('<Return>', self.find_next)
         # Right-click context menu: add Paste
         self.context_menu = tk.Menu(self, tearoff=0)
@@ -1074,6 +1076,42 @@ class PlaylistTab(ttk.Frame):
         elif not iid:
             self._dnd_hover_iid = None
         return event.action
+
+    def _on_arrow_up(self, event):
+        selection = self.tree.selection()
+        all_children = self.tree.get_children()
+        if not all_children:
+            return
+        if not selection:
+            # If nothing is selected, select the last row
+            self.tree.selection_set(all_children[-1])
+            self.tree.see(all_children[-1])
+        else:
+            current_iid = selection[0]
+            idx = list(all_children).index(current_iid)
+            if idx > 0:
+                new_iid = all_children[idx - 1]
+                self.tree.selection_set(new_iid)
+                self.tree.see(new_iid)
+        return "break"
+
+    def _on_arrow_down(self, event):
+        selection = self.tree.selection()
+        all_children = self.tree.get_children()
+        if not all_children:
+            return
+        if not selection:
+            # If nothing is selected, select the first row
+            self.tree.selection_set(all_children[0])
+            self.tree.see(all_children[0])
+        else:
+            current_iid = selection[0]
+            idx = list(all_children).index(current_iid)
+            if idx < len(all_children) - 1:
+                new_iid = all_children[idx + 1]
+                self.tree.selection_set(new_iid)
+                self.tree.see(new_iid)
+        return "break"
 
 
 # --- Dialog Windows ---
