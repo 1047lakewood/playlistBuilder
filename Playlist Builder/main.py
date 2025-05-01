@@ -128,8 +128,9 @@ class PlaylistTab(ttk.Frame):
         self.tree.bind("<Control-C>", lambda e: self.app.copy_selected())
         self.tree.bind("<Control-v>", lambda e: self.paste_after_selected())
         self.tree.bind("<Control-V>", lambda e: self.paste_after_selected())
-        self.tree.bind("<Up>", self._on_arrow_up)
-        self.tree.bind("<Down>", self._on_arrow_down)
+        # --- Enable shift+arrow multi-select fix ---
+        self.tree.bind("<Shift-Up>", self._shift_arrow_select, add='+')
+        self.tree.bind("<Shift-Down>", self._shift_arrow_select, add='+')
         self.find_entry.bind('<Return>', self.find_next)
         # --- ROW NUMBER AUTO-UPDATE ---
         self.tree.bind('<<TreeviewSelect>>', self._auto_update_row_numbers, add='+')
@@ -986,6 +987,41 @@ class PlaylistTab(ttk.Frame):
                 values[0] = idx + 1
                 self.tree.item(iid, values=values)
 
+    def _shift_arrow_select(self, event):
+        # Enhanced handler for shift+arrow expands selection in both directions
+        selection = self.tree.selection()
+        all_children = self.tree.get_children()
+        if not all_children:
+            return "break"
+        if not selection:
+            # If nothing is selected, select the first or last depending on direction
+            if event.keysym == 'Up':
+                self.tree.selection_set(all_children[-1])
+                self.tree.see(all_children[-1])
+            else:
+                self.tree.selection_set(all_children[0])
+                self.tree.see(all_children[0])
+            return "break"
+        # Find anchor (first selected) and focus (last selected in contiguous selection)
+        anchor = selection[0]
+        indices = sorted([list(all_children).index(iid) for iid in selection])
+        min_idx, max_idx = indices[0], indices[-1]
+        if event.keysym == 'Up':
+            # Expand selection upwards
+            if min_idx > 0:
+                new_idx = min_idx - 1
+                new_range = list(all_children)[new_idx:max_idx+1]
+                self.tree.selection_set(new_range)
+                self.tree.see(all_children[new_idx])
+        elif event.keysym == 'Down':
+            # Expand selection downwards
+            if max_idx < len(all_children) - 1:
+                new_idx = max_idx + 1
+                new_range = list(all_children)[min_idx:new_idx+1]
+                self.tree.selection_set(new_range)
+                self.tree.see(all_children[new_idx])
+        return "break"
+
     def _on_tree_press(self, event):
         # Only start drag if plain left-click (no shift/ctrl modifiers)
         if (event.state & 0x0001) or (event.state & 0x0004):  # Shift or Control pressed
@@ -1090,42 +1126,6 @@ class PlaylistTab(ttk.Frame):
         elif not iid:
             self._dnd_hover_iid = None
         return event.action
-
-    def _on_arrow_up(self, event):
-        selection = self.tree.selection()
-        all_children = self.tree.get_children()
-        if not all_children:
-            return
-        if not selection:
-            # If nothing is selected, select the last row
-            self.tree.selection_set(all_children[-1])
-            self.tree.see(all_children[-1])
-        else:
-            current_iid = selection[0]
-            idx = list(all_children).index(current_iid)
-            if idx > 0:
-                new_iid = all_children[idx - 1]
-                self.tree.selection_set(new_iid)
-                self.tree.see(new_iid)
-        return "break"
-
-    def _on_arrow_down(self, event):
-        selection = self.tree.selection()
-        all_children = self.tree.get_children()
-        if not all_children:
-            return
-        if not selection:
-            # If nothing is selected, select the first row
-            self.tree.selection_set(all_children[0])
-            self.tree.see(all_children[0])
-        else:
-            current_iid = selection[0]
-            idx = list(all_children).index(current_iid)
-            if idx < len(all_children) - 1:
-                new_iid = all_children[idx + 1]
-                self.tree.selection_set(new_iid)
-                self.tree.see(new_iid)
-        return "break"
 
 
 # --- Dialog Windows ---
