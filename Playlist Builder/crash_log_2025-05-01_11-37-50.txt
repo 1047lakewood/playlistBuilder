@@ -1,0 +1,18 @@
+=== CRASH REPORT ===
+Time: 2025-05-01_11-37-50
+Exception Type: KeyboardInterrupt
+Exception Value: 
+
+Traceback:
+  File "G:\Misc\Dev\Playlist Builder\main.py", line 1259, in <module>
+    root.mainloop()
+  File "C:\Program Files\Python312\Lib\tkinter\__init__.py", line 1504, in mainloop
+    self.tk.mainloop(n)
+
+Full Traceback:
+Traceback (most recent call last):
+  File "G:\Misc\Dev\Playlist Builder\main.py", line 1259, in <module>
+    root.mainloop()
+  File "C:\Program Files\Python312\Lib\tkinter\__init__.py", line 1504, in mainloop
+    self.tk.mainloop(n)
+KeyboardInterrupt

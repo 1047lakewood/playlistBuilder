@@ -142,28 +142,36 @@ class PlaylistManagerApp(tk.Frame):
 
         # --- Pre-listen Controls ---
         self.prelisten_frame = ttk.Frame(self)
-        self.prelisten_frame.pack(fill="x", side="bottom", padx=5, pady=(0, 5))
+        self.prelisten_frame.pack_forget() # Hide by default
 
         self.play_pause_button = ttk.Button(self.prelisten_frame, text="▶ Play", command=self.toggle_play_pause, width=8)
         self.play_pause_button.pack(side="left", padx=(0,5))
         self.stop_button = ttk.Button(self.prelisten_frame, text="■ Stop", command=self.stop_playback, width=8)
         self.stop_button.pack(side="left", padx=(0,5))
 
-        self.prelisten_label = ttk.Label(self.prelisten_frame, text="No track selected.", anchor="w", width=60)
-        self.prelisten_label.pack(side="left", padx=5, fill="x", expand=True)
+        # Song title label
+        self.prelisten_label = ttk.Label(self.prelisten_frame, text="No track selected.", anchor="w", width=40)
+        self.prelisten_label.pack(side="top", anchor="w", padx=5, pady=(0,2), fill="x")
 
-        # Speed control (simple placeholder - real speed control is complex)
-        self.speed_label = ttk.Label(self.prelisten_frame, text="Speed:")
-        self.speed_label.pack(side="left", padx=(10, 2))
-        self.speed_var = tk.StringVar(value="1.0x")
-        self.speed_combobox = ttk.Combobox(self.prelisten_frame, textvariable=self.speed_var,
-                                           values=["0.5x", "0.75x", "1.0x", "1.25x", "1.5x", "2.0x"],
-                                           width=5, state="readonly") # Readonly for now, as changing speed mid-play isn't implemented simply with pygame.mixer.music
-        self.speed_combobox.pack(side="left", padx=(0,5))
-        self.speed_combobox.bind("<<ComboboxSelected>>", self.apply_speed_change_on_next_play) # Just note the change
+        # Scrubber/progress bar (styled for a modern look, easier to drag)
+        self.progress_var = tk.DoubleVar(value=0)
+        self.progress_scale = ttk.Scale(self.prelisten_frame, from_=0, to=100, orient="horizontal", variable=self.progress_var, command=self.on_scrub, length=250)
+        self.progress_scale.pack(side="top", fill="x", expand=True, padx=(5, 40), pady=(0,2))
+        self.progress_scale.bind("<ButtonRelease-1>", self.on_scrub_release)
+        self.progress_scale.configure(takefocus=True)
+
+        # Volume slider (no label)
+        self.volume_var = tk.DoubleVar(value=1.0)
+        self.volume_scale = ttk.Scale(self.prelisten_frame, from_=0, to=1, orient="horizontal", variable=self.volume_var, command=self.on_volume_change, length=80)
+        self.volume_scale.pack(side="left", padx=(5, 5), pady=(5,0))
 
         self.progress_label = ttk.Label(self.prelisten_frame, text="00:00 / 00:00", width=15, anchor='e')
-        self.progress_label.pack(side="right", padx=5)
+        self.progress_label.pack(side="left", padx=5)
+
+        # X button to hide player (moved to end)
+        self.hide_player_button = ttk.Button(self.prelisten_frame, text="✖", width=3, command=self.hide_prelisten_player)
+        self.hide_player_button.pack(side="right", padx=(5,5), pady=(0,0))
+        self.hide_player_button.pack_forget()  # Hide by default
 
         # --- Status Bar ---
         self.status_var = tk.StringVar()
@@ -716,6 +724,7 @@ class PlaylistManagerApp(tk.Frame):
             self.current_track_duration = track_data.get('duration') or 0 
             self.play_pause_button.config(text="❚❚ Pause")
             self.update_prelisten_info(track_data)
+            self.show_prelisten_player()
             self.set_status(f"Playing: {os.path.basename(path)}")
 
             self.playback_start_time = time.time()
@@ -749,7 +758,7 @@ class PlaylistManagerApp(tk.Frame):
         if was_playing:
             self.set_status("Playback stopped.")
             self.progress_label.config(text=f"00:00 / {format_duration(self.current_track_duration)}")
-
+            self.hide_prelisten_player()
 
     def _update_playback_progress(self):
         if self.currently_playing_path and not self.is_paused and pygame.mixer.music.get_busy():
@@ -757,8 +766,11 @@ class PlaylistManagerApp(tk.Frame):
 
             if self.current_track_duration > 0:
                 elapsed_time = min(elapsed_time, self.current_track_duration)
-
-            self.progress_label.config(text=f"{format_duration(elapsed_time)} / {format_duration(self.current_track_duration)}")
+                self.progress_var.set(int((elapsed_time / self.current_track_duration) * 100))
+                self.progress_label.config(text=f"{format_duration(elapsed_time)} / {format_duration(self.current_track_duration)}")
+            else:
+                self.progress_var.set(0)
+                self.progress_label.config(text="00:00 / 00:00")
 
             self.playback_update_job = self.after(250, self._update_playback_progress) 
         elif self.currently_playing_path and not self.is_paused:
@@ -781,12 +793,10 @@ class PlaylistManagerApp(tk.Frame):
         self.prelisten_label.config(text="No track selected.")
         self.progress_label.config(text="00:00 / 00:00")
         self.play_pause_button.config(text="▶ Play")
+        self.hide_prelisten_player()
 
     def apply_speed_change_on_next_play(self, event=None):
-        speed = self.speed_var.get()
-        self.set_status(f"Playback speed set to {speed} (will apply on next play if supported).")
-        # In a real implementation, you might need to stop, reload with speed modification (if lib supports), and play.
-
+        pass
 
     # --- Application Exit ---
 
@@ -912,3 +922,45 @@ class PlaylistManagerApp(tk.Frame):
                 self.after(delay_ms, lambda: attempt_init(attempt_num + 1))
 
         attempt_init(1)
+
+    def hide_prelisten_player(self):
+        self.stop_playback()  # Also stop playback
+        self.prelisten_frame.pack_forget()
+        self.currently_playing_path = None
+
+    def show_prelisten_player(self):
+        self.prelisten_frame.pack(fill="x", side="bottom", padx=5, pady=(0, 5))
+        self.hide_player_button.pack(side="right", padx=(5,5))
+
+    def on_scrub(self, value):
+        # Update label while dragging
+        if self.current_track_duration > 0:
+            elapsed = float(value) * self.current_track_duration / 100
+            self.progress_label.config(text=f"{format_duration(elapsed)} / {format_duration(self.current_track_duration)}")
+        # Make scrubber easier to drag: set focus
+        self.progress_scale.focus_set()
+        # Only cancel update job if not already scrubbing
+        if self.currently_playing_path and not self.is_paused and not getattr(self, '_scrubbing', False):
+            if hasattr(self, 'playback_update_job') and self.playback_update_job:
+                self.after_cancel(self.playback_update_job)
+            self._scrubbing = True
+
+    def on_scrub_release(self, event):
+        # Seek to new position when user releases scrubber
+        if self.current_track_duration > 0:
+            percent = self.progress_var.get() / 100
+            seek_time = percent * self.current_track_duration
+            try:
+                pygame.mixer.music.play(start=seek_time)
+                pygame.mixer.music.set_volume(self.volume_var.get())
+                self.playback_start_time = time.time() - seek_time
+                self._scrubbing = False
+                self._update_playback_progress()
+            except Exception as e:
+                print(f"[ERROR] Scrubbing failed: {e}")
+
+    def on_volume_change(self, value):
+        try:
+            pygame.mixer.music.set_volume(float(value))
+        except Exception as e:
+            print(f"[ERROR] Volume change failed: {e}")

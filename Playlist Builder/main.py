@@ -174,7 +174,7 @@ class PlaylistTab(ttk.Frame):
             self.tree.dnd_bind('<<Drop>>', self._on_external_drop)
             self.tree.dnd_bind('<<DropPosition>>', self._on_external_dragover)
             self._dnd_enabled = True
-            print("[DND] External drag-and-drop enabled.")
+            # print(f"[DND] External drag-and-drop enabled. (Tab: {self.tab_display_name}, ID: {id(self)})")
         except (ImportError, Exception) as e:
             print(f"[WARN] Drag-and-drop from outside is disabled: {e}")
 
