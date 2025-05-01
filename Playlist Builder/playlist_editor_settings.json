@@ -11,10 +11,6 @@
     "a": {
       "tabs_info": [
         {
-          "filepath": "G:/Playlists/Erev playlists/1 erev av 5782.m3u8",
-          "display_name": "1 erev av 5782.m3u8"
-        },
-        {
           "filepath": "G:/Playlists/Erev playlists/Main playlist Pesach Chol Hamoed 5785.m3u8",
           "display_name": "Main playlist Pesach Chol Hamoed 5785.m3u8"
         }
@@ -32,7 +28,7 @@
   "last_profile": "a",
   "audio_device": null,
   "open_tabs": [
-    "G:/Playlists/Erev playlists/1 erev av 5782.m3u8",
-    "G:/Playlists/Erev playlists/Main playlist Pesach Chol Hamoed 5785.m3u8"
+    "G:/Playlists/Erev playlists/Main playlist Pesach Chol Hamoed 5785.m3u8",
+    "G:/Playlists/Erev playlists/Bichukosai shavua sfira 5784.m3u8"
   ]
 }

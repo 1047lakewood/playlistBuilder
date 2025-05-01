@@ -30,7 +30,7 @@ class PlaylistManagerApp(tk.Frame):
         self.master = master
         if master is not None:
             master.title(APP_NAME)
-            master.geometry("1200x700")
+            master.geometry("1600x900")
         self.current_settings = {
             "columns": DEFAULT_COLUMNS,
             "profiles": {},
@@ -55,6 +55,10 @@ class PlaylistManagerApp(tk.Frame):
         heading_font.configure(weight="bold")
         self.option_add("*Treeview*Heading.Font", heading_font)
         self.option_add("*Menu.Font", default_font)
+        # Make the top bar menu font larger
+        menu_font = default_font.copy()
+        menu_font.configure(size=12, family="Segoe UI")
+        self.option_add("*Menu.Font", menu_font)
         self.option_add("*Button.Font", default_font)
         self.option_add("*Label.Font", default_font)
         self.option_add("*Entry.Font", default_font)
@@ -204,6 +208,9 @@ class PlaylistManagerApp(tk.Frame):
         # --- Pygame Mixer Init ---
         self._auto_init_audio()
 
+        # Initialize persistent column widths
+        self._column_widths = self.current_settings.get('column_widths', {})
+
     # ... (rest of PlaylistManagerApp methods unchanged)
 
     def set_status(self, message):
@@ -256,6 +263,14 @@ class PlaylistManagerApp(tk.Frame):
         self.notebook.select(tab) # Make the new tab active
         tab.update_tab_title() # Set initial '*' if needed
         self.set_status(f"Created new playlist: {title}")
+        # After tab is created, apply column widths
+        if hasattr(self, 'get_column_widths'):
+            widths = self.get_column_widths()
+            for col, width in widths.items():
+                try:
+                    tab.tree.column(col, width=width)
+                except Exception:
+                    pass
         return tab
 
     def open_playlists(self):
@@ -440,38 +455,192 @@ class PlaylistManagerApp(tk.Frame):
     # --- Profile Management ---
 
     def save_profile(self):
-        """Saves the current state (open tabs, columns) as a named profile."""
-        profile_name = simpledialog.askstring("Save Profile", "Enter a name for this profile:", parent=self)
-        if not profile_name:
-            print("[PROFILE] Save cancelled: No name provided.")
+        """Saves the current state (open tabs, columns) as a named profile, or to the currently opened profile."""
+        profiles = list(self.current_settings.get("profiles", {}).keys())
+        last_profile = self.current_settings.get("last_profile")
+        options = []
+        if last_profile:
+            options.append(f"Overwrite current profile: {last_profile}")
+        options.append("Save to new profile")
+        # Ask user what they want to do
+        dialog = tk.Toplevel(self)
+        dialog.title("Save Profile")
+        dialog.transient(self)
+        dialog.grab_set()
+        # Center the dialog on the display
+        dialog.update_idletasks()
+        w = dialog.winfo_width()
+        h = dialog.winfo_height()
+        ws = dialog.winfo_screenwidth()
+        hs = dialog.winfo_screenheight()
+        x = (ws // 2) - (w // 2)
+        y = (hs // 2) - (h // 2)
+        dialog.geometry(f"+{x}+{y}")
+        tk.Label(dialog, text="Choose save option:").pack(padx=10, pady=10)
+        var = tk.StringVar(value=options[0])
+        for opt in options:
+            tk.Radiobutton(dialog, text=opt, variable=var, value=opt).pack(anchor="w", padx=15)
+        btn_frame = tk.Frame(dialog)
+        btn_frame.pack(pady=10)
+        result = {'option': None}
+        def on_ok():
+            result['option'] = var.get()
+            dialog.destroy()
+        def on_cancel():
+            dialog.destroy()
+        tk.Button(btn_frame, text="OK", command=on_ok).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Cancel", command=on_cancel).pack(side=tk.LEFT, padx=5)
+        dialog.wait_window()
+        choice = result['option']
+        if choice is None:
+            self.set_status("Profile save cancelled.")
             return
+
+        if choice.startswith("Overwrite current profile") and last_profile:
+            profile_name = last_profile
+        else:
+            # Ask for new profile name
+            profile_name = simpledialog.askstring("Save Profile", "Enter a name for this profile:", parent=self)
+            if not profile_name:
+                print("[PROFILE] Save cancelled: No name provided.")
+                return
 
         tabs_info = []
         for tab_id in self.notebook.tabs():
             widget = self.nametowidget(tab_id)
             if isinstance(widget, PlaylistTab) and widget.filepath:
-                # Save both filepath and display name
                 tabs_info.append({
                     "filepath": widget.filepath,
-                    "display_name": widget.tab_display_name  # Save the custom display name
+                    "display_name": widget.tab_display_name
                 })
-            else:
-                self.set_status(f"Warning: Untitled playlist '{widget.get_display_name()}' was not saved in the profile.")
 
         profile_data = {
             "tabs_info": tabs_info,
             "columns": self.current_settings['columns']
-            # Add other settings here if needed, e.g., window size/pos
         }
 
         if "profiles" not in self.current_settings:
             self.current_settings["profiles"] = {}
         self.current_settings["profiles"][profile_name] = profile_data
-        self.current_settings["last_profile"] = profile_name # Set as last loaded
+        self.current_settings["last_profile"] = profile_name
         self.save_settings()
         self.update_load_profile_menu()
         print(f"[PROFILE] Profile '{profile_name}' saved to settings.")
         self.set_status(f"Profile '{profile_name}' saved.")
+
+    def delete_profile(self):
+        profiles = list(self.current_settings.get("profiles", {}).keys())
+        if not profiles:
+             messagebox.showinfo("Delete Profile", "There are no profiles to delete.")
+             return
+
+        # Only allow selection from the list, no entry field for typing
+        dialog = tk.Toplevel(self)
+        dialog.title("Delete Profile")
+        dialog.transient(self)
+        dialog.grab_set()
+        dialog.update_idletasks()
+        w = dialog.winfo_width()
+        h = dialog.winfo_height()
+        ws = dialog.winfo_screenwidth()
+        hs = dialog.winfo_screenheight()
+        x = (ws // 2) - (w // 2)
+        y = (hs // 2) - (h // 2)
+        dialog.geometry(f"+{x}+{y}")
+        tk.Label(dialog, text="Select a profile to delete:").pack(padx=10, pady=10)
+        var = tk.StringVar(value=profiles[0] if profiles else "")
+        listbox = tk.Listbox(dialog, listvariable=tk.StringVar(value=profiles), height=min(10, len(profiles)), exportselection=False)
+        listbox.pack(padx=10, pady=5)
+        listbox.selection_set(0)
+        def on_select(event=None):
+            sel = listbox.curselection()
+            if sel:
+                var.set(profiles[sel[0]])
+        listbox.bind('<<ListboxSelect>>', on_select)
+        result = {'profile': None}
+        def on_ok():
+            result['profile'] = var.get()
+            dialog.destroy()
+        def on_cancel():
+            dialog.destroy()
+        btn_frame = tk.Frame(dialog)
+        btn_frame.pack(pady=10)
+        tk.Button(btn_frame, text="OK", command=on_ok).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Cancel", command=on_cancel).pack(side=tk.LEFT, padx=5)
+        dialog.wait_window()
+        choice = result['profile']
+        if choice and choice in self.current_settings["profiles"]:
+            if messagebox.askyesno("Confirm Deletion", f"Are you sure you want to delete the profile '{choice}'?", parent=self):
+                del self.current_settings["profiles"][choice]
+                if self.current_settings.get("last_profile") == choice:
+                    self.current_settings["last_profile"] = None 
+                self.save_settings()
+                self.update_load_profile_menu()
+                self.set_status(f"Profile '{choice}' deleted.")
+        elif choice:
+             messagebox.showerror("Delete Error", f"Profile '{choice}' not found.", parent=self)
+
+    def _choose_profile_dialog(self, profiles, title, prompt):
+        dialog = tk.Toplevel(self)
+        dialog.title(title)
+        dialog.transient(self)
+        dialog.grab_set()
+        # Center the dialog on the display
+        dialog.update_idletasks()
+        w = dialog.winfo_width()
+        h = dialog.winfo_height()
+        ws = dialog.winfo_screenwidth()
+        hs = dialog.winfo_screenheight()
+        x = (ws // 2) - (w // 2)
+        y = (hs // 2) - (h // 2)
+        dialog.geometry(f"+{x}+{y}")
+        tk.Label(dialog, text=prompt).pack(padx=10, pady=10)
+        var = tk.StringVar(value=profiles[0] if profiles else "")
+        listbox = tk.Listbox(dialog, listvariable=tk.StringVar(value=profiles), height=min(10, len(profiles)), exportselection=False)
+        listbox.pack(padx=10, pady=5)
+        listbox.selection_set(0)
+        entry = tk.Entry(dialog, textvariable=var)
+        entry.pack(padx=10, pady=5)
+        entry.insert(0, profiles[0] if profiles else "")
+        entry.focus_set()
+
+        def on_select(event=None):
+            sel = listbox.curselection()
+            if sel:
+                var.set(profiles[sel[0]])
+                entry.delete(0, tk.END)
+                entry.insert(0, profiles[sel[0]])
+
+        listbox.bind('<<ListboxSelect>>', on_select)
+
+        result = {'profile': None}
+
+        def on_ok():
+            result['profile'] = var.get()
+            dialog.destroy()
+
+        def on_cancel():
+            dialog.destroy()
+
+        btn_frame = tk.Frame(dialog)
+        btn_frame.pack(pady=10)
+        tk.Button(btn_frame, text="OK", command=on_ok).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Cancel", command=on_cancel).pack(side=tk.LEFT, padx=5)
+        dialog.wait_window()
+        return result['profile']
+
+    def update_load_profile_menu(self):
+        """Updates the dynamic 'Load Profile' menu."""
+        self.load_profile_menu.delete(0, tk.END) 
+        profiles = self.current_settings.get("profiles", {})
+        if not profiles:
+            self.load_profile_menu.add_command(label="(No profiles saved)", state="disabled")
+        else:
+            for name in sorted(profiles.keys()):
+                self.load_profile_menu.add_command(label=name, command=lambda n=name: self.load_profile(n))
+            self.load_profile_menu.add_separator()
+            self.load_profile_menu.add_command(label="Delete Profile...", command=self.delete_profile)
+
 
     def load_profile(self, profile_name, startup=False):
         logger.info(f'Attempting to load profile: {profile_name} (startup={startup})') 
@@ -562,39 +731,6 @@ class PlaylistManagerApp(tk.Frame):
             logger.warning("Attempting to revert to empty state after profile load error.")
             self.current_settings["last_profile"] = None 
             self.restore_open_tabs() 
-
-    def update_load_profile_menu(self):
-        """Updates the dynamic 'Load Profile' menu."""
-        self.load_profile_menu.delete(0, tk.END) 
-        profiles = self.current_settings.get("profiles", {})
-        if not profiles:
-            self.load_profile_menu.add_command(label="(No profiles saved)", state="disabled")
-        else:
-            for name in sorted(profiles.keys()):
-                self.load_profile_menu.add_command(label=name, command=lambda n=name: self.load_profile(n))
-            self.load_profile_menu.add_separator()
-            self.load_profile_menu.add_command(label="Delete Profile...", command=self.delete_profile)
-
-
-    def delete_profile(self):
-        profiles = list(self.current_settings.get("profiles", {}).keys())
-        if not profiles:
-             messagebox.showinfo("Delete Profile", "There are no profiles to delete.")
-             return
-
-        choice = simpledialog.askstring("Delete Profile", "Enter the exact name of the profile to delete:", parent=self)
-
-        if choice and choice in self.current_settings["profiles"]:
-            if messagebox.askyesno("Confirm Deletion", f"Are you sure you want to delete the profile '{choice}'?", parent=self):
-                del self.current_settings["profiles"][choice]
-                if self.current_settings.get("last_profile") == choice:
-                    self.current_settings["last_profile"] = None 
-                self.save_settings()
-                self.update_load_profile_menu()
-                self.set_status(f"Profile '{choice}' deleted.")
-        elif choice:
-             messagebox.showerror("Delete Error", f"Profile '{choice}' not found.", parent=self)
-
 
     # --- Settings Persistence ---
 
@@ -976,3 +1112,20 @@ class PlaylistManagerApp(tk.Frame):
             pygame.mixer.music.set_volume(float(value))
         except Exception as e:
             print(f"[ERROR] Volume change failed: {e}")
+
+    def on_column_widths_changed(self, new_widths):
+        """Callback from PlaylistTab when column widths change. Persist and update all tabs uniformly."""
+        self._column_widths = new_widths.copy()
+        self.current_settings['column_widths'] = new_widths.copy()
+        self.save_settings()
+        for tab_id in self.notebook.tabs():
+            widget = self.nametowidget(tab_id)
+            if hasattr(widget, 'tree'):
+                for col, width in new_widths.items():
+                    try:
+                        widget.tree.column(col, width=width)
+                    except Exception:
+                        pass
+
+    def get_column_widths(self):
+        return getattr(self, '_column_widths', {})

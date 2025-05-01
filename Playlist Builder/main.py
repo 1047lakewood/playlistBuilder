@@ -101,6 +101,9 @@ class PlaylistTab(ttk.Frame):
         self.tree.pack(expand=True, fill="both", side="left")
 
         self.setup_columns()
+        # Bind column width changes to persist widths
+        self.tree.bind('<ButtonRelease-1>', self._on_column_resize, add='+')
+        self._last_column_widths = {}
 
         # --- Treeview Tag Styles ---
         # Red + strikethrough for missing files
@@ -909,13 +912,15 @@ class PlaylistTab(ttk.Frame):
         col_widths = {'#': 40, 'Artist': 150, 'Title': 250, 'Album': 150, 'Genre': 100, 'TrackNumber': 40, 'Duration': 60, 'Path': 300, 'Exists': 50, 'Bitrate':60, 'Format': 60}
         col_anchors = {'#': 'e', 'TrackNumber': 'e', 'Duration': 'e', 'Exists': 'center', 'Bitrate':'e'}
 
+        # Use app-level saved widths if available
+        saved_widths = getattr(self.app, 'get_column_widths', lambda: None)() or {}
         for col in AVAILABLE_COLUMNS:
-            self.tree.heading(col, text=col)  # No sort command
-            self.tree.column(col, width=col_widths.get(col, 100), anchor=col_anchors.get(col, 'w'), stretch=tk.NO if col in ['#','Duration','Exists','TrackNumber','Bitrate','Format'] else tk.YES)
+            width = saved_widths.get(col, col_widths.get(col, 100))
+            self.tree.heading(col, text=col)
+            self.tree.column(col, width=width, anchor=col_anchors.get(col, 'w'), stretch=tk.NO if col in ['#','Duration','Exists','TrackNumber','Bitrate','Format'] else tk.YES)
 
         # Apply the currently visible columns
         self.update_columns(self.visible_columns)
-
 
     def update_columns(self, visible_column_ids):
         """Updates which columns are visible in the Treeview."""
@@ -1210,6 +1215,16 @@ class PlaylistTab(ttk.Frame):
         self.save_playlist()
         return "break"
 
+    def _on_column_resize(self, event=None):
+        # Save column widths after user resizes
+        if not hasattr(self, 'tree'):
+            return
+        cur_widths = {col: self.tree.column(col, 'width') for col in AVAILABLE_COLUMNS}
+        if cur_widths != getattr(self, '_last_column_widths', {}):
+            self._last_column_widths = cur_widths.copy()
+            if hasattr(self.app, 'on_column_widths_changed'):
+                self.app.on_column_widths_changed(cur_widths)
+
 
 # --- Dialog Windows ---
 
@@ -1353,6 +1368,14 @@ if __name__ == "__main__":
         from playlist_manager_app import PlaylistManagerApp
         app = PlaylistManagerApp(master=root)
         app.pack(fill="both", expand=True)
+
+        # --- Ensure settings are saved on close ---
+        def on_close():
+            if hasattr(app, 'save_settings'):
+                app.save_settings()
+            root.destroy()
+        root.protocol("WM_DELETE_WINDOW", on_close)
+
         root.mainloop()
         
     except Exception as e:
