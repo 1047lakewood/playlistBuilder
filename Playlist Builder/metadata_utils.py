@@ -78,7 +78,8 @@ def load_audio_metadata(filepath):
                 return metadata
         # Final fallback: If still no duration or format, note error
         if metadata['duration'] is None:
-            print(f"[METADATA][WARN] No duration found for {filepath}")
+            # Removed noisy warning log per user request
+            pass
         if not metadata['format']:
             metadata['format'] = f"Unknown/Unsupported ({os.path.splitext(filepath)[1]})"
     except Exception as e:

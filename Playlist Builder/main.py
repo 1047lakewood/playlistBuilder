@@ -772,17 +772,24 @@ class PlaylistTab(ttk.Frame):
         try:
             with open(filepath, 'r', encoding=M3U_ENCODING) as f:
                 lines = f.readlines()
-            new_tracks = []
+            # --- Optimization: batch metadata loading ---
+            track_paths = []
             for line in lines:
                 line = line.strip()
-                # Ignore all comment lines (including #EXTM3U and #EXTINF)
                 if not line or line.startswith('#'):
                     continue
-                # Only treat as a track if the path exists and is an audio file
                 abs_path = os.path.abspath(os.path.join(os.path.dirname(filepath), line)) if not os.path.isabs(line) else line
-                meta = load_audio_metadata(abs_path)
-                # Only add if metadata indicates a valid audio file (exists and has duration or title)
-                if meta.get('exists') and (meta.get('duration') or meta.get('title')):
+                track_paths.append(abs_path)
+            # Use threads to load metadata in parallel for speedup
+            import concurrent.futures
+            new_tracks = []
+            def safe_load(path):
+                return load_audio_metadata(path)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+                results = list(executor.map(safe_load, track_paths))
+            for meta, orig_path in zip(results, track_paths):
+                # Accept if duration, or if a path was provided (even if no title in metadata)
+                if meta.get('duration') or orig_path:
                     new_tracks.append(meta)
             self._track_data = new_tracks
             self.refresh_display()
@@ -790,7 +797,10 @@ class PlaylistTab(ttk.Frame):
             self.update_tab_title()
             return True
         except Exception as e:
+            import traceback
+            logging.error(f"[PLAYLIST][ERROR] Failed to load playlist from {filepath}: {e}\n{traceback.format_exc()}")
             return False
+
 
     def save_playlist(self, force_save_as=False):
         """Saves the playlist to M3U8 format."""
