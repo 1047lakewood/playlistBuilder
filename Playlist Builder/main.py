@@ -5,11 +5,6 @@ import os
 import sys
 import json
 import shutil
-from mutagen import File as MutagenFile
-from mutagen.id3 import ID3NoHeaderError
-from mutagen.flac import FLACNoHeaderError
-from mutagen.mp4 import MP4NoTrackError
-from mutagen.oggvorbis import OggVorbisHeaderError
 import pygame # For prelistening
 import threading # For non-blocking prelisten update
 import time
@@ -19,6 +14,7 @@ import subprocess
 from common_components import (APP_NAME, SETTINGS_FILE, DEFAULT_COLUMNS, AVAILABLE_COLUMNS, 
                              M3U_ENCODING, format_duration, open_file_location, ColumnChooserDialog)
 import tkinterdnd2 as tkdnd
+import logging # Add logging import
 
 def get_metadata(filepath):
     # Deprecated: Use load_audio_metadata from metadata_utils.py
@@ -878,6 +874,26 @@ class PlaylistTab(ttk.Frame):
         # No need to re-setup headings/widths, just visibility
 
 
+    def update_displayed_columns(self, new_columns):
+        """Updates the columns visible in the treeview."""
+        self.visible_columns = new_columns
+        try:
+            # Filter to only include columns that actually exist in AVAILABLE_COLUMNS
+            valid_display_columns = [col for col in new_columns if col in AVAILABLE_COLUMNS]
+            if not valid_display_columns:
+                # Fallback if somehow all columns are invalid
+                valid_display_columns = DEFAULT_COLUMNS
+                self.visible_columns = DEFAULT_COLUMNS # Update internal state too
+
+            self.tree.config(displaycolumns=valid_display_columns)
+            # Optional: Re-run setup if column widths/headings depend on visibility?
+            # self.setup_columns() # Usually not needed just for visibility change
+            logging.debug(f"Updated displayed columns for tab '{self.tab_display_name}' to: {valid_display_columns}")
+        except tk.TclError as e:
+            logging.error(f"Error updating displaycolumns for tab '{self.tab_display_name}': {e}", exc_info=True)
+        except Exception as e:
+             logging.error(f"Unexpected error in update_displayed_columns for tab '{self.tab_display_name}': {e}", exc_info=True)
+
     def mark_dirty(self, dirty=True):
         """Sets the dirty state and updates the tab title."""
         if self.is_dirty != dirty:
@@ -1136,8 +1152,69 @@ class MetadataEditDialog(simpledialog.Dialog):
 # --- Main Execution ---
 
 if __name__ == "__main__":
-    root = tkdnd.TkinterDnD.Tk()
-    from playlist_manager_app import PlaylistManagerApp
-    app = PlaylistManagerApp(master=root)
-    app.pack(fill="both", expand=True)
-    root.mainloop()
+    # Set up basic logging
+    logging.basicConfig(level=logging.INFO, 
+                        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', 
+                        filename='app.log', 
+                        filemode='w') # Overwrite log each run
+    # Add a console handler as well if desired
+    # console_handler = logging.StreamHandler()
+    # console_handler.setLevel(logging.INFO)
+    # formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    # console_handler.setFormatter(formatter)
+    # logging.getLogger('').addHandler(console_handler)
+    
+    logging.info("Application starting...")
+
+    # Set up error trapping
+    try:
+        import sys
+        import traceback
+        import datetime
+        
+        def custom_excepthook(exctype, value, tb):
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            log_file = f"crash_log_{timestamp}.txt"
+            
+            with open(log_file, "w") as f:
+                f.write("=== CRASH REPORT ===\n")
+                f.write(f"Time: {timestamp}\n")
+                f.write(f"Exception Type: {exctype.__name__}\n")
+                f.write(f"Exception Value: {str(value)}\n\n")
+                f.write("Traceback:\n")
+                traceback.print_tb(tb, file=f)
+                f.write("\nFull Traceback:\n")
+                traceback.print_exception(exctype, value, tb, file=f)
+            
+            # Also print to console for immediate visibility
+            print(f"\n[CRITICAL] Crash logged to {log_file}")
+            traceback.print_exception(exctype, value, tb)
+            
+            # Show error dialog
+            try:
+                import tkinter.messagebox as msgbox
+                msgbox.showerror("Critical Error", 
+                                f"The application has crashed.\n"
+                                f"Crash report saved to:\n{log_file}")
+            except:
+                pass
+                
+        # Install the custom exception handler
+        sys.excepthook = custom_excepthook
+        
+        # Run the application normally
+        root = tkdnd.TkinterDnD.Tk()
+        from playlist_manager_app import PlaylistManagerApp
+        app = PlaylistManagerApp(master=root)
+        app.pack(fill="both", expand=True)
+        root.mainloop()
+        
+    except Exception as e:
+        print(f"[CRITICAL] Exception in main thread: {e}")
+        import traceback
+        traceback.print_exc()
+        try:
+            import tkinter.messagebox as msgbox
+            msgbox.showerror("Critical Error", f"The application encountered a critical error:\n{e}")
+        except:
+            pass

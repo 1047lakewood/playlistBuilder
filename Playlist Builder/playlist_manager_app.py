@@ -18,6 +18,8 @@ import subprocess
 from common_components import (APP_NAME, SETTINGS_FILE, DEFAULT_COLUMNS, AVAILABLE_COLUMNS, 
                              M3U_ENCODING, format_duration, open_file_location, ColumnChooserDialog)
 import main # Import main module for PlaylistTab class
+import logging
+logger = logging.getLogger(__name__)
 
 # Import PlaylistTab at the module level to avoid circular imports
 PlaylistTab = main.PlaylistTab
@@ -71,7 +73,7 @@ class PlaylistManagerApp(tk.Frame):
 
         # LARGE font/padding for SELECTED tab (should look like previous unselected tabs)
         selected_tab_font = heading_font.copy()
-        selected_tab_font.configure(size=45, weight="bold")
+        selected_tab_font.configure(size=35, weight="bold")
 
 
         style.map("TNotebook.Tab",
@@ -388,89 +390,167 @@ class PlaylistManagerApp(tk.Frame):
             if isinstance(widget, PlaylistTab):
                 widget.update_columns(self.current_settings['columns'])
 
+    def update_column_settings_for_all_tabs(self):
+        """Applies the current column settings to all open PlaylistTab instances."""
+        new_columns = self.current_settings.get('columns', DEFAULT_COLUMNS)
+        logger.info(f"Applying column settings to all tabs: {new_columns}")
+        if not hasattr(self, 'notebook'):
+            logger.error("Notebook widget not found, cannot update tab columns.")
+            return
+
+        tabs = self.notebook.tabs()
+        if not tabs:
+            logger.info("No tabs open, skipping column update.")
+            return
+
+        for tab_id in tabs:
+            try:
+                widget = self.nametowidget(tab_id)
+                # Check if the main module and PlaylistTab class exist before isinstance check
+                if main and hasattr(main, 'PlaylistTab') and isinstance(widget, main.PlaylistTab):
+                     logger.debug(f"Updating columns for tab: {widget.get_display_name()}")
+                     widget.update_displayed_columns(new_columns)
+                else:
+                     logger.warning(f"Widget for tab ID {tab_id} is not a PlaylistTab instance (type: {type(widget).__name__}). Skipping column update.")
+            except tk.TclError as e:
+                logger.warning(f"TclError accessing widget for tab ID {tab_id}: {e} - Tab might have been destroyed.")
+            except Exception as e:
+                logger.error(f"Error updating columns for tab ID {tab_id}: {e}", exc_info=True)
+
     # --- Profile Management ---
 
     def save_profile(self):
         """Saves the current state (open tabs, columns) as a named profile."""
         profile_name = simpledialog.askstring("Save Profile", "Enter a name for this profile:", parent=self)
         if not profile_name:
+            print("[PROFILE] Save cancelled: No name provided.")
             return
 
-        open_tabs_paths = []
+        tabs_info = []
         for tab_id in self.notebook.tabs():
             widget = self.nametowidget(tab_id)
             if isinstance(widget, PlaylistTab) and widget.filepath:
-                open_tabs_paths.append(widget.filepath)
+                # Save both filepath and display name
+                tabs_info.append({
+                    "filepath": widget.filepath,
+                    "display_name": widget.tab_display_name  # Save the custom display name
+                })
             else:
                 self.set_status(f"Warning: Untitled playlist '{widget.get_display_name()}' was not saved in the profile.")
 
         profile_data = {
-            "tabs": open_tabs_paths,
+            "tabs_info": tabs_info,
             "columns": self.current_settings['columns']
             # Add other settings here if needed, e.g., window size/pos
         }
 
+        if "profiles" not in self.current_settings:
+            self.current_settings["profiles"] = {}
         self.current_settings["profiles"][profile_name] = profile_data
         self.current_settings["last_profile"] = profile_name # Set as last loaded
         self.save_settings()
         self.update_load_profile_menu()
+        print(f"[PROFILE] Profile '{profile_name}' saved to settings.")
         self.set_status(f"Profile '{profile_name}' saved.")
 
     def load_profile(self, profile_name, startup=False):
-        """Loads a saved profile, closing current tabs and opening saved ones."""
-        if profile_name not in self.current_settings["profiles"]:
-            messagebox.showerror("Load Error", f"Profile '{profile_name}' not found.")
-            if startup: # If failed on startup, clear last profile setting and restore open tabs
-                self.current_settings["last_profile"] = None
-                self.save_settings()
-                self.restore_open_tabs()
-                if not self.notebook.tabs():
-                    self.add_new_tab("Untitled Playlist")
+        logger.info(f'Attempting to load profile: {profile_name} (startup={startup})') 
+        try:
+            if profile_name not in self.current_settings.get("profiles", {}): 
+                logger.error(f"Profile '{profile_name}' not found in settings.")
+                messagebox.showerror("Load Error", f"Profile '{profile_name}' not found.")
+                if startup:
+                    logger.warning("Profile not found during startup, clearing last_profile and restoring default/empty state.")
+                    self.current_settings["last_profile"] = None
+                    self.save_settings()
+                    self.restore_open_tabs() 
                 return
-            return
-        profile_data = self.current_settings["profiles"][profile_name]
 
-        # 1. Close all existing tabs (prompting for save)
-        all_tabs_closed = True
-        # Iterate backwards because closing modifies the list of tabs
-        for tab_id in reversed(self.notebook.tabs()):
-             self.notebook.select(tab_id) # Select tab to make close_current_tab work
-             tab_widget = self.nametowidget(tab_id)
-             if not self.close_current_tab():
-                  all_tabs_closed = False
-                  # Don't break, let user decide for others, but report failure
-                  messagebox.showwarning("Save Failed", f"Could not save '{tab_widget.get_display_name()}'. Exiting anyway?", parent=self)
-                  # Or could force exit cancellation:
-                  # self.set_status("Exit cancelled due to save failure.")
-                  # return
-        # If save_all is False (No), proceed to exit without saving
+            logger.info(f"Found profile '{profile_name}'. Proceeding with load.")
+            profile_data = self.current_settings["profiles"][profile_name]
+            tabs_info = profile_data.get('tabs_info', []) 
+            columns = profile_data.get('columns', self.current_settings.get('columns', DEFAULT_COLUMNS)) 
 
-        # 2. Stop audio gracefully
-        if hasattr(self, 'pygame_initialized') and getattr(self, 'pygame_initialized', False):
-            self.stop_playback()
-            pygame.mixer.quit()
-            print("Pygame mixer quit.")
+            logger.debug(f"Setting columns for profile '{profile_name}': {columns}")
+            self.current_settings['columns'] = columns
 
-        # 3. Save settings (like last loaded profile)
-        self.save_settings()
+            logger.info("Closing existing tabs before loading profile tabs.")
+            open_tab_ids = list(self.notebook.tabs()) 
+            for tab_id in open_tab_ids:
+                try:
+                    logger.debug(f"Closing tab with ID: {tab_id}")
+                    self.notebook.forget(tab_id)
+                except tk.TclError as e:
+                    logger.warning(f"TclError closing tab {tab_id}: {e} - might already be closed.")
+                except Exception as e:
+                    logger.error(f"Unexpected error closing tab {tab_id}: {e}", exc_info=True)
 
-        # 4. Destroy window
-        if not startup:
-            self.master.destroy()
-        # If called during __init__, prevent further initialization
-        if startup:
-            raise SystemExit
+            logger.info(f"Loading {len(tabs_info)} tabs specified in profile '{profile_name}'.")
+            if not tabs_info:
+                logger.warning(f"Profile '{profile_name}' has no tabs specified. Adding a default Untitled tab.")
+                self.add_new_tab(title="Untitled Playlist") 
+            else:
+                for i, tab_info in enumerate(tabs_info):
+                    filepath = tab_info.get('filepath')
+                    display_name = tab_info.get('display_name', os.path.basename(filepath) if filepath else "Untitled Playlist")
+                    logger.info(f"Processing tab {i+1}/{len(tabs_info)}: filepath='{filepath}', display_name='{display_name}'")
+
+                    if filepath:
+                        if os.path.exists(filepath):
+                            logger.debug(f"Adding tab for existing file: {filepath}")
+                            tab = self.add_new_tab(title=display_name, filepath=filepath)
+                            if tab and display_name != os.path.basename(filepath):
+                                logger.debug(f"Setting custom display name: '{display_name}'")
+                                tab.tab_display_name = display_name
+                                tab.update_tab_title()
+                                
+                            if tab and hasattr(tab, 'load_playlist_from_file'):
+                                logger.info(f"Calling load_playlist_from_file for: {filepath}")
+                                try:
+                                    success = tab.load_playlist_from_file(filepath)
+                                    logger.info(f"load_playlist_from_file result for '{filepath}': {success}")
+                                    if not success:
+                                        logger.error(f"Failed to load playlist content for: {filepath}")
+                                        messagebox.showwarning("Load Warning", f"Could not fully load playlist:\n{filepath}\n\nIt might be corrupted or inaccessible.", parent=self)
+                                except Exception as e:
+                                    logger.error(f"Exception during load_playlist_from_file for {filepath}: {e}", exc_info=True)
+                                    messagebox.showerror("Load Error", f"An error occurred loading playlist:\n{filepath}\n\nError: {e}", parent=self)
+                        else:
+                            logger.warning(f"File path from profile does not exist, skipping tab: {filepath}")
+                            messagebox.showwarning("Load Warning", f"Playlist file not found:\n{filepath}\n\nThis tab was not loaded.", parent=self)
+                    else:
+                        logger.info("Adding an Untitled tab as specified in profile.")
+                        self.add_new_tab(title=display_name or "Untitled Playlist") 
+
+            if not self.notebook.tabs():
+                logger.warning("No tabs were loaded or remained after profile load. Adding a default Untitled tab.")
+                self.add_new_tab(title="Untitled Playlist")
+
+            self.current_settings["last_profile"] = profile_name
+            self.save_settings() 
+            self.update_load_profile_menu() 
+            self.update_column_settings_for_all_tabs() 
+            self.set_status(f"Profile '{profile_name}' loaded.")
+            logger.info(f"Profile '{profile_name}' loading complete.")
+            if self.notebook.tabs():
+                self.notebook.select(self.notebook.tabs()[0])
+                self.on_tab_change() 
+
+        except Exception as e:
+            logger.error(f"CRITICAL ERROR loading profile '{profile_name}': {e}", exc_info=True)
+            messagebox.showerror("Profile Load Error", f"A critical error occurred while loading profile '{profile_name}'.\nSee app.log for details.\n\nError: {e}", parent=self)
+            logger.warning("Attempting to revert to empty state after profile load error.")
+            self.current_settings["last_profile"] = None 
+            self.restore_open_tabs() 
 
     def update_load_profile_menu(self):
         """Updates the dynamic 'Load Profile' menu."""
-        self.load_profile_menu.delete(0, tk.END) # Clear existing items
+        self.load_profile_menu.delete(0, tk.END) 
         profiles = self.current_settings.get("profiles", {})
         if not profiles:
             self.load_profile_menu.add_command(label="(No profiles saved)", state="disabled")
         else:
-            # Sort profile names alphabetically for consistency
             for name in sorted(profiles.keys()):
-                # Use lambda with default argument to capture the current name
                 self.load_profile_menu.add_command(label=name, command=lambda n=name: self.load_profile(n))
             self.load_profile_menu.add_separator()
             self.load_profile_menu.add_command(label="Delete Profile...", command=self.delete_profile)
@@ -482,14 +562,13 @@ class PlaylistManagerApp(tk.Frame):
              messagebox.showinfo("Delete Profile", "There are no profiles to delete.")
              return
 
-        # Simple dialog to choose profile to delete (could be improved with a listbox)
         choice = simpledialog.askstring("Delete Profile", "Enter the exact name of the profile to delete:", parent=self)
 
         if choice and choice in self.current_settings["profiles"]:
             if messagebox.askyesno("Confirm Deletion", f"Are you sure you want to delete the profile '{choice}'?", parent=self):
                 del self.current_settings["profiles"][choice]
                 if self.current_settings.get("last_profile") == choice:
-                    self.current_settings["last_profile"] = None # Clear last profile if it was the deleted one
+                    self.current_settings["last_profile"] = None 
                 self.save_settings()
                 self.update_load_profile_menu()
                 self.set_status(f"Profile '{choice}' deleted.")
@@ -501,7 +580,6 @@ class PlaylistManagerApp(tk.Frame):
 
     def save_settings(self):
         """Saves current settings to SETTINGS_FILE, including open tabs."""
-        # Save open tabs (filepaths or None for untitled tabs)
         open_tabs = []
         for tab_id in self.notebook.tabs():
             widget = self.nametowidget(tab_id)
@@ -510,10 +588,10 @@ class PlaylistManagerApp(tk.Frame):
             else:
                 open_tabs.append(None)
         self.current_settings['open_tabs'] = open_tabs
-        # Save as before
         try:
             with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
                 json.dump(self.current_settings, f, indent=2)
+            print(f"[SETTINGS] Saved to {SETTINGS_FILE}")
         except Exception as e:
             print(f"[ERROR] Saving settings: {e}")
 
@@ -542,7 +620,6 @@ class PlaylistManagerApp(tk.Frame):
     def restore_open_tabs(self):
         """Restores open tabs from settings on startup and loads playlists."""
         open_tabs = self.current_settings.get('open_tabs', [])
-        # Remove all tabs safely
         for tab_id in self.notebook.tabs():
             self.notebook.forget(tab_id)
         if open_tabs:
@@ -550,7 +627,10 @@ class PlaylistManagerApp(tk.Frame):
                 if filepath:
                     tab = self.add_new_tab(title=os.path.basename(filepath), filepath=filepath)
                     if hasattr(tab, 'load_playlist_from_file'):
-                        tab.load_playlist_from_file(filepath)
+                        try:
+                            tab.load_playlist_from_file(filepath)
+                        except Exception as e:
+                            print(f"[ERROR] Failed to load playlist from {filepath}: {e}")
                 else:
                     self.add_new_tab("Untitled Playlist")
 
@@ -563,35 +643,30 @@ class PlaylistManagerApp(tk.Frame):
 
         if self.currently_playing_path:
             if self.is_paused:
-                # Resume
                 try:
                     pygame.mixer.music.unpause()
                     self.is_paused = False
                     self.play_pause_button.config(text="❚❚ Pause")
                     self.set_status(f"Resumed: {os.path.basename(self.currently_playing_path)}")
-                    # Restart progress updater from paused position
                     self.playback_start_time = time.time() - self.paused_position
                     self._update_playback_progress()
                 except Exception as e:
                     messagebox.showerror("Playback Error", f"Could not resume playback: {e}")
-                    self.stop_playback() # Stop fully if error
+                    self.stop_playback() 
             else:
-                # Pause
                 try:
                     pygame.mixer.music.pause()
                     self.is_paused = True
                     self.play_pause_button.config(text="▶ Play")
                     self.set_status(f"Paused: {os.path.basename(self.currently_playing_path)}")
-                    # Record position and stop updater
                     self.paused_position = time.time() - self.playback_start_time
                     if self.playback_update_job:
                         self.after_cancel(self.playback_update_job)
                         self.playback_update_job = None
                 except Exception as e:
                     messagebox.showerror("Playback Error", f"Could not pause playback: {e}")
-                    self.stop_playback() # Stop fully if error
+                    self.stop_playback() 
         else:
-            # Start playing selected track
             current_tab = self.get_current_tab()
             if not current_tab:
                 return
@@ -606,21 +681,18 @@ class PlaylistManagerApp(tk.Frame):
                 messagebox.showwarning("Play Error", "Cannot play track: File does not exist or data missing.")
                 return
 
+            if not track_data['exists']:
+                messagebox.showwarning("Play Error", "Cannot play track: File does not exist.")
+                return
+
             self.start_playback(track_data)
 
     def start_playback(self, track_data):
-        """Starts playback of the given track data dictionary."""
-        # Robust check: ensure mixer is actually initialized in pygame, not just our flag
-        try:
-            if pygame.mixer.get_init() is None:
-                print("[WARN] Mixer not actually initialized at playback time. Attempting re-init.")
-                pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=2048)
-                print("[INFO] Mixer re-initialized at playback time.")
-                self.pygame_initialized = True
-        except Exception as e:
-            print(f"[ERROR] Failed to re-initialize mixer at playback time: {e}")
-            self.set_status(f"Audio Error: Could not initialize mixer for playback: {e}")
-            return
+        if pygame.mixer.get_init() is None:
+            print("[WARN] Mixer not actually initialized at playback time. Attempting re-init.")
+            pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=2048)
+            print("[INFO] Mixer re-initialized at playback time.")
+            self.pygame_initialized = True
         print(f"[DEBUG] start_playback called for {track_data.get('path')}. Initialized: {self.pygame_initialized}")
         if not self.pygame_initialized:
             print("[ERROR] start_playback attempted but mixer not initialized.")
@@ -641,12 +713,11 @@ class PlaylistManagerApp(tk.Frame):
             self.currently_playing_path = path
             self.is_paused = False
             self.paused_position = 0
-            self.current_track_duration = track_data.get('duration') or 0 # Get duration from track data
+            self.current_track_duration = track_data.get('duration') or 0 
             self.play_pause_button.config(text="❚❚ Pause")
             self.update_prelisten_info(track_data)
             self.set_status(f"Playing: {os.path.basename(path)}")
 
-            # Start progress updates
             self.playback_start_time = time.time()
             self._update_playback_progress()
 
@@ -656,8 +727,6 @@ class PlaylistManagerApp(tk.Frame):
             return
 
     def stop_playback(self):
-        if not self.pygame_initialized: return
-
         if self.playback_update_job:
             self.after_cancel(self.playback_update_job)
             self.playback_update_job = None
@@ -665,12 +734,10 @@ class PlaylistManagerApp(tk.Frame):
         try:
             pygame.mixer.music.stop()
             try:
-                pygame.mixer.music.unload() # Free up the file handle
+                pygame.mixer.music.unload() 
             except AttributeError:
-                # Fallback for older pygame versions without unload
                 pass
         except pygame.error as e:
-            # Ignore errors on stop usually, maybe file was already gone?
             print(f"Pygame error during stop/unload: {e}")
 
 
@@ -681,40 +748,32 @@ class PlaylistManagerApp(tk.Frame):
         self.play_pause_button.config(text="▶ Play")
         if was_playing:
             self.set_status("Playback stopped.")
-            # Don't reset the label immediately, keep showing last track info until new selection/action
             self.progress_label.config(text=f"00:00 / {format_duration(self.current_track_duration)}")
 
 
     def _update_playback_progress(self):
-        """Internal function to update the playback progress label."""
         if self.currently_playing_path and not self.is_paused and pygame.mixer.music.get_busy():
-            # Using time.time() is more reliable than get_pos() for elapsed time after seeks/pauses
             elapsed_time = time.time() - self.playback_start_time
 
-            # Cap elapsed time at duration if known
             if self.current_track_duration > 0:
                 elapsed_time = min(elapsed_time, self.current_track_duration)
 
             self.progress_label.config(text=f"{format_duration(elapsed_time)} / {format_duration(self.current_track_duration)}")
 
-            # Schedule next update
-            self.playback_update_job = self.after(250, self._update_playback_progress) # Update 4 times a second
+            self.playback_update_job = self.after(250, self._update_playback_progress) 
         elif self.currently_playing_path and not self.is_paused:
-             # Music stopped naturally (finished)
-             self.stop_playback() # Clean up state
+             self.stop_playback() 
 
 
     def update_prelisten_info(self, track_data):
-         """Updates the pre-listen display area with track details."""
          if track_data:
              title = track_data.get('title', 'Unknown Title')
              artist = track_data.get('artist', 'Unknown Artist')
              duration_str = format_duration(track_data.get('duration'))
              self.prelisten_label.config(text=f"{artist} - {title}")
-             # Only reset progress if not currently playing THIS track
              if track_data.get('path') != self.currently_playing_path:
                  self.progress_label.config(text=f"00:00 / {duration_str}")
-                 self.current_track_duration = track_data.get('duration', 0) # Store duration for playback
+                 self.current_track_duration = track_data.get('duration', 0) 
          else:
              self.reset_prelisten_ui()
 
@@ -722,10 +781,8 @@ class PlaylistManagerApp(tk.Frame):
         self.prelisten_label.config(text="No track selected.")
         self.progress_label.config(text="00:00 / 00:00")
         self.play_pause_button.config(text="▶ Play")
-        # Don't stop playback here, only reset UI text
 
     def apply_speed_change_on_next_play(self, event=None):
-        # Currently just acknowledges the change. Real implementation is complex.
         speed = self.speed_var.get()
         self.set_status(f"Playback speed set to {speed} (will apply on next play if supported).")
         # In a real implementation, you might need to stop, reload with speed modification (if lib supports), and play.
@@ -734,8 +791,6 @@ class PlaylistManagerApp(tk.Frame):
     # --- Application Exit ---
 
     def quit_app(self):
-        """Handles application closing, prompts for saving profiles/playlists."""
-        # 1. Check unsaved playlists across all tabs
         tabs_to_save = []
         for tab_id in self.notebook.tabs():
             widget = self.nametowidget(tab_id)
@@ -748,32 +803,23 @@ class PlaylistManagerApp(tk.Frame):
                 "There are unsaved playlists:\n- " + "\n- ".join(tabs_to_save) +
                 "\n\nDo you want to save all changes before exiting?"
             )
-            if save_all is None: # Cancel exit
+            if save_all is None: 
                 return
-            elif save_all is True: # Save All
+            elif save_all is True: 
                 all_saved = True
                 for tab_id in self.notebook.tabs():
-                     self.notebook.select(tab_id) # Select tab to make close_current_tab work
+                     self.notebook.select(tab_id) 
                      tab_widget = self.nametowidget(tab_id)
                      if not self.close_current_tab():
                           all_saved = False
-                          # Don't break, let user decide for others, but report failure
                           messagebox.showwarning("Save Failed", f"Could not save '{tab_widget.get_display_name()}'. Exiting anyway?", parent=self)
-                          # Or could force exit cancellation:
-                          # self.set_status("Exit cancelled due to save failure.")
-                          # return
-        # If save_all is False (No), proceed to exit without saving
-
-        # 2. Stop audio gracefully
         if hasattr(self, 'pygame_initialized') and getattr(self, 'pygame_initialized', False):
             self.stop_playback()
             pygame.mixer.quit()
             print("Pygame mixer quit.")
 
-        # 3. Save settings (like last loaded profile)
         self.save_settings()
 
-        # 4. Destroy window
         self.master.destroy()
 
     def toggle_filter_bar(self):
@@ -782,11 +828,9 @@ class PlaylistManagerApp(tk.Frame):
             tab.show_filter_bar()
 
     def _update_tab_styles(self, event=None):
-        # No-op: ttk.Notebook does not support per-tab font/padding. Style is handled globally above.
         pass
 
     def _on_tab_right_click_context(self, event):
-        """Show context menu for renaming or deleting tab on right-click of notebook tab."""
         x, y = event.x, event.y
         elem = self.notebook.identify(x, y)
         if elem == 'label':
@@ -801,7 +845,6 @@ class PlaylistManagerApp(tk.Frame):
         self.notebook.forget(tab_widget_id)
 
     def on_tab_right_click(self, event):
-        """Show context menu for renaming tab on right-click of notebook tab."""
         x, y = event.x, event.y
         elem = self.notebook.identify(event.x, event.y)
         if elem == 'label':
@@ -811,12 +854,10 @@ class PlaylistManagerApp(tk.Frame):
             menu.tk_popup(event.x_root, event.y_root)
 
     def rename_notebook_tab(self, tab_id):
-        """Prompt user to rename the tab at tab_id."""
         current_title = self.notebook.tab(tab_id, "text")
         new_title = simpledialog.askstring("Rename Tab", "Enter new tab name:", initialvalue=current_title, parent=self)
         if new_title and new_title.strip():
             self.notebook.tab(tab_id, text=new_title.strip())
-            # Also update PlaylistTab's tab_display_name if possible
             widget = self.nametowidget(self.notebook.tabs()[tab_id])
             if hasattr(widget, 'tab_display_name'):
                 widget.tab_display_name = new_title.strip()
@@ -845,10 +886,9 @@ class PlaylistManagerApp(tk.Frame):
         self._dragged_tab_id = None
 
     def _auto_init_audio(self):
-        """Tries to initialize pygame mixer with retry logic, silently."""
         self.pygame_initialized = False
         max_attempts = 5
-        delay_ms = 500 # Delay between retries in milliseconds
+        delay_ms = 500 
 
         def attempt_init(attempt_num):
             if attempt_num > max_attempts:
@@ -858,7 +898,7 @@ class PlaylistManagerApp(tk.Frame):
             try:
                 pygame.mixer.quit()
             except Exception:
-                pass # Ignore errors during quit
+                pass 
             try:
                 pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=2048)
                 self.pygame_initialized = True
@@ -871,5 +911,4 @@ class PlaylistManagerApp(tk.Frame):
                 self.set_status(f"Audio not available (attempt {attempt_num}): {e}")
                 self.after(delay_ms, lambda: attempt_init(attempt_num + 1))
 
-        # Start the first attempt
         attempt_init(1)
