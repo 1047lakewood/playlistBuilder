@@ -30,7 +30,7 @@ class PlaylistManagerApp(tk.Frame):
         self.master = master
         if master is not None:
             master.title(APP_NAME)
-            master.geometry("1000x700")
+            master.geometry("1200x700")
         self.current_settings = {
             "columns": DEFAULT_COLUMNS,
             "profiles": {},
