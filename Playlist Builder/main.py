@@ -156,6 +156,8 @@ class PlaylistTab(ttk.Frame):
         self.context_menu.add_separator()
         self.context_menu.add_command(label="Open File Location", command=self.context_open_location)
         self.context_menu.add_separator()
+        self.context_menu.add_command(label="Open in Audacity", command=self.context_open_in_audacity)
+        self.context_menu.add_separator()
         # self.context_menu.add_command(label="Rename Tab", command=self.context_rename_tab)
         self.context_menu.add_command(label="Check File Existence", command=self.context_check_existence)
 
@@ -773,6 +775,22 @@ class PlaylistTab(ttk.Frame):
                  open_file_location(track_data['path'])
             else:
                  messagebox.showerror("Error", "Path information is missing for this item.")
+
+    def context_open_in_audacity(self):
+        """Open selected track in Audacity."""
+        iid = self.get_selected_item_id()
+        if iid:
+            track_data = self.get_track_data_by_iid(iid)
+            if track_data and track_data.get('path') and os.path.exists(track_data['path']):
+                try:
+                    # Attempt to launch Audacity with the file
+                    subprocess.Popen([r"C:\Program Files\Audacity\audacity.exe", track_data['path']])
+                except Exception as e:
+                    messagebox.showerror("Error", f"Could not open file in Audacity:\n{e}")
+            else:
+                messagebox.showerror("Error", "Path information is missing or file does not exist.")
+        else:
+            messagebox.showinfo("Open in Audacity", "Please select a track to open.")
 
     def context_check_existence(self):
         """Re-checks existence for selected files."""
