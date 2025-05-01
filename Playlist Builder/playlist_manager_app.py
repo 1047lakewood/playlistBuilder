@@ -127,6 +127,7 @@ class PlaylistManagerApp(tk.Frame):
         self.edit_menu = tk.Menu(self.main_menu, tearoff=0)
         self.main_menu.add_cascade(label="Edit", menu=self.edit_menu)
         self.edit_menu.add_command(label="Copy Selected", command=self.copy_selected)
+        self.edit_menu.add_command(label="Cut Selected", command=self.cut_selected)
         self.edit_menu.add_command(label="Paste Tracks", command=self.paste_tracks)
         self.edit_menu.add_separator()
         self.edit_menu.add_command(label="Remove Selected", command=self.remove_selected_from_current)
@@ -356,6 +357,17 @@ class PlaylistManagerApp(tk.Frame):
                 self.set_status(f"Copied {len(self.clipboard)} track(s) to clipboard.")
             else:
                 self.set_status("Select tracks to copy first.")
+
+    def cut_selected(self):
+        """Copy selected tracks to clipboard and remove them from the playlist."""
+        current_tab = self.get_current_tab()
+        if not current_tab:
+            return
+        selected_tracks = current_tab.get_selected_track_data()
+        if not selected_tracks:
+            return
+        self.clipboard = [track.copy() for track in selected_tracks]
+        current_tab.remove_selected_tracks()
 
     def paste_tracks(self):
         current_tab = self.get_current_tab()

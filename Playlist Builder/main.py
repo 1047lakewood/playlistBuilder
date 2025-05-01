@@ -126,6 +126,8 @@ class PlaylistTab(ttk.Frame):
         self.tree.bind("<Delete>", lambda e: self.remove_selected_tracks()) # Delete key
         self.tree.bind("<Control-c>", lambda e: self.app.copy_selected())
         self.tree.bind("<Control-C>", lambda e: self.app.copy_selected())
+        self.tree.bind("<Control-x>", lambda e: self.app.cut_selected())
+        self.tree.bind("<Control-X>", lambda e: self.app.cut_selected())
         self.tree.bind("<Control-v>", lambda e: self.paste_after_selected())
         self.tree.bind("<Control-V>", lambda e: self.paste_after_selected())
         # --- Enable shift+arrow multi-select fix ---
@@ -142,20 +144,19 @@ class PlaylistTab(ttk.Frame):
         self.context_menu = tk.Menu(self, tearoff=0)
         self.context_menu.add_command(label="Pre-listen", command=self.context_prelisten)
         self.context_menu.add_separator()
-        self.context_menu.add_command(label="Copy", command=self.context_copy)
-        # Paste is handled globally/via edit menu
-        self.context_menu.add_separator()
         self.context_menu.add_command(label="Edit Metadata...", command=self.context_edit_metadata)
         self.context_menu.add_command(label="Rename Manually", command=self.context_rename_file_manual)
         self.context_menu.add_command(label="Rename by Browsing", command=self.context_rename_file_browse)
         self.context_menu.add_separator()
-        self.context_menu.add_command(label="Rename Tab", command=self.context_rename_tab)
+        self.context_menu.add_command(label="Delete", command=self.context_remove)
+        self.context_menu.add_command(label="Copy", command=self.context_copy)
+        self.context_menu.add_command(label="Cut", command=self.context_cut)
+        self.context_menu.add_command(label="Paste", command=self.paste_after_selected)
         self.context_menu.add_separator()
         self.context_menu.add_command(label="Open File Location", command=self.context_open_location)
-        self.context_menu.add_command(label="Check File Existence", command=self.context_check_existence)
         self.context_menu.add_separator()
-        self.context_menu.add_command(label="Remove From Playlist", command=self.context_remove)
-        self.context_menu.add_command(label="Paste After", command=self.paste_after_selected)
+        # self.context_menu.add_command(label="Rename Tab", command=self.context_rename_tab)
+        self.context_menu.add_command(label="Check File Existence", command=self.context_check_existence)
 
         # Enable drag-and-drop for reordering playlist tracks in the treeview
         self.tree.bind('<ButtonPress-1>', self._on_tree_press)
@@ -608,6 +609,10 @@ class PlaylistTab(ttk.Frame):
 
     def context_copy(self):
         self.app.copy_selected() # Use global copy handler
+
+    def context_cut(self):
+        """Cut selected tracks (copy + remove)."""
+        self.app.cut_selected()
 
     def context_remove(self):
         self.remove_selected_tracks()
