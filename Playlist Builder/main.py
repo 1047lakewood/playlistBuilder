@@ -994,30 +994,20 @@ class PlaylistTab(ttk.Frame):
             # On release, update _track_data to match the new Treeview order
             new_order = []
             iid_to_track = self._iid_map.copy()
-            # Save the unique identity of selected tracks
-            selected_iids = self.tree.selection()
-            selected_keys = set()
-            for iid in selected_iids:
-                track = iid_to_track.get(iid)
-                if track is not None:
-                    # Use path as unique key if available, else id()
-                    key = track.get('path') if track.get('path') else id(track)
-                    selected_keys.add(key)
+            # Save the order of selected iids (by index in tree)
+            selected_iids = list(self.tree.selection())
+            selected_indices = [list(self.tree.get_children('')).index(iid) for iid in selected_iids if iid in self.tree.get_children('')]
             for iid in self.tree.get_children(''):
                 if iid in iid_to_track:
                     new_order.append(iid_to_track[iid])
             self._track_data = new_order
             self.refresh_display(keep_selection=False)
-            # Restore selection after refresh
-            if selected_keys:
-                new_selection = []
-                for iid, track in self._iid_map.items():
-                    key = track.get('path') if track.get('path') else id(track)
-                    if key in selected_keys:
-                        new_selection.append(iid)
-                if new_selection:
-                    self.tree.selection_set(new_selection)
-                    self.tree.see(new_selection[0])
+            # Restore selection after refresh: select rows at the same indices as before
+            children = list(self.tree.get_children(''))
+            to_select = [children[i] for i in selected_indices if i < len(children)]
+            if to_select:
+                self.tree.selection_set(to_select)
+                self.tree.see(to_select[0])
             self.mark_dirty()
         self._dragged_iid = None
         self._dragged_index = None
