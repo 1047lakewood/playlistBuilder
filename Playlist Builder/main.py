@@ -155,7 +155,6 @@ class PlaylistTab(ttk.Frame):
         self.context_menu.add_command(label="Paste", command=self.paste_after_selected)
         self.context_menu.add_separator()
         self.context_menu.add_command(label="Open File Location", command=self.context_open_location)
-        self.context_menu.add_separator()
         self.context_menu.add_command(label="Open in Audacity", command=self.context_open_in_audacity)
         self.context_menu.add_separator()
         # self.context_menu.add_command(label="Rename Tab", command=self.context_rename_tab)
