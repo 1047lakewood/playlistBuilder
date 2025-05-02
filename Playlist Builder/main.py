@@ -12,9 +12,11 @@ import tkinter.font as tkfont
 from metadata_utils import load_audio_metadata, save_audio_metadata
 import subprocess
 from common_components import (APP_NAME, SETTINGS_FILE, DEFAULT_COLUMNS, AVAILABLE_COLUMNS, 
-                             M3U_ENCODING, format_duration, open_file_location, ColumnChooserDialog)
+                             M3U_ENCODING, format_duration, open_file_location)
 import tkinterdnd2 as tkdnd
 import logging # Add logging import
+
+from dialog_windows import MetadataEditDialog
 
 def get_metadata(filepath):
     # Deprecated: Use load_audio_metadata from metadata_utils.py
@@ -1272,102 +1274,6 @@ class PlaylistTab(ttk.Frame):
                 self.app.on_column_widths_changed(cur_widths)
 
 
-# --- Dialog Windows ---
-
-class ColumnChooserDialog(simpledialog.Dialog):
-    def __init__(self, parent, all_columns, selected_columns):
-        self.all_columns = all_columns
-        self.selected_columns = selected_columns
-        self.vars = {}
-        self.result = None
-        super().__init__(parent, "Customize Columns")
-
-    def body(self, master):
-        ttk.Label(master, text="Select columns to display:").grid(row=0, sticky='w', columnspan=2, pady=5)
-
-        # Use Checkbuttons for selection
-        row = 1
-        col = 0
-        for idx, column_id in enumerate(self.all_columns):
-            self.vars[column_id] = tk.BooleanVar()
-            if column_id in self.selected_columns:
-                self.vars[column_id].set(True)
-            cb = ttk.Checkbutton(master, text=column_id, variable=self.vars[column_id])
-            cb.grid(row=row, column=col, sticky='w', padx=5, pady=2)
-            col += 1
-            if col > 2: # Adjust number of columns in dialog
-                col = 0
-                row += 1
-        return None # Focus default
-
-    def apply(self):
-        self.result = [col for col in self.all_columns if self.vars[col].get()]
-        # Basic validation: ensure at least one column is selected?
-        if not self.result:
-            messagebox.showwarning("No Columns", "Please select at least one column to display.", parent=self)
-            self.result = None # Prevent closing dialog
-
-
-class MetadataEditDialog(simpledialog.Dialog):
-    def __init__(self, parent, track_data):
-        self.track_data = track_data.copy() # Work on a copy
-        self.entries = {}
-        self.result = None
-        super().__init__(parent, f"Edit Metadata: {os.path.basename(track_data.get('path',''))}")
-
-    def body(self, master):
-        fields = ['Title', 'Artist', 'Album', 'Genre', 'TrackNumber']
-        row = 0
-        for field in fields:
-            key = field.lower()
-            ttk.Label(master, text=f"{field}:").grid(row=row, column=0, sticky='e', padx=5, pady=3)
-            var = tk.StringVar(value=self.track_data.get(key, ''))
-            entry = ttk.Entry(master, textvariable=var, width=40)
-            entry.grid(row=row, column=1, sticky='w', padx=5, pady=3)
-            self.entries[key] = var
-            if row == 0: entry.focus_set() # Focus Title field
-            row += 1
-        # --- Add Copy File Name Button ---
-        copy_btn = ttk.Button(master, text="Copy File Name", command=self.copy_file_name)
-        copy_btn.grid(row=row, column=0, columnspan=2, pady=(10, 2))
-        return None # Focus handled above
-
-    def copy_file_name(self):
-        """Copy file name (no path, no extension) to clipboard and log the action."""
-        path = self.track_data.get('path', '')
-        if path:
-            base = os.path.basename(path)
-            name, _ = os.path.splitext(base)
-            self.clipboard_clear()
-            self.clipboard_append(name)
-            logging.info(f"Copied file name to clipboard: {name}")
-        else:
-            logging.warning("No file path found to copy file name.")
-
-    def apply(self):
-        self.result = {}
-        valid = True
-        for key, var in self.entries.items():
-            value = var.get().strip()
-            # Add validation if needed (e.g., track number should be integer)
-            if key == 'tracknumber' and value:
-                try:
-                    int(value)
-                except ValueError:
-                    messagebox.showerror("Invalid Input", "Track Number must be a whole number.", parent=self)
-                    valid = False
-                    break # Stop validation
-            self.result[key] = value
-
-        if valid:
-             # Add non-editable fields back for context if needed by caller
-             self.result['path'] = self.track_data.get('path')
-             self.result['duration'] = self.track_data.get('duration')
-             self.result['exists'] = self.track_data.get('exists')
-             # ... any other fields needed by the caller after update
-             self.result['__force_refresh_number'] = True
-        else:
-             self.result = None # Indicate failure
 
 
 

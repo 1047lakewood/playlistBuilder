@@ -16,11 +16,11 @@ import tkinter.font as tkfont
 from metadata_utils import load_audio_metadata, save_audio_metadata
 import subprocess
 from common_components import (APP_NAME, SETTINGS_FILE, DEFAULT_COLUMNS, AVAILABLE_COLUMNS, 
-                             M3U_ENCODING, format_duration, open_file_location, ColumnChooserDialog)
+                             M3U_ENCODING, format_duration, open_file_location, )
 import main # Import main module for PlaylistTab class
 import logging
 logger = logging.getLogger(__name__)
-
+from dialog_windows import ColumnChooserDialog
 # Import PlaylistTab at the module level to avoid circular imports
 PlaylistTab = main.PlaylistTab
 

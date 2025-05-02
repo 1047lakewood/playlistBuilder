@@ -3,6 +3,7 @@
     "#",
     "Artist",
     "Title",
+    "Album",
     "Duration",
     "Path",
     "Exists"

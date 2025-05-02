@@ -128,32 +128,3 @@ def open_file_location(filepath):
 
     except Exception as e:
         messagebox.showerror("Error Opening Location", f"Could not open file location:\n{e}")
-
-# --- Dialog Classes ---
-class ColumnChooserDialog(simpledialog.Dialog):
-    def __init__(self, parent, all_columns, selected_columns):
-        self.all_columns = all_columns
-        self.selected_columns = selected_columns
-        self.vars = {}
-        self.result = None
-        super().__init__(parent, "Customize Columns")
-
-    def body(self, master):
-        tk.Label(master, text="Select columns to display:").pack(anchor='w', padx=10, pady=(10, 5))
-        frame = ttk.Frame(master)
-        frame.pack(padx=10, pady=5, fill='both', expand=True)
-        
-        for col in self.all_columns:
-            var = tk.BooleanVar(value=(col in self.selected_columns))
-            self.vars[col] = var
-            ttk.Checkbutton(frame, text=col, variable=var).pack(anchor='w', padx=5, pady=2)
-            
-        return frame  # Initial focus
-
-    def apply(self):
-        selected = [col for col, var in self.vars.items() if var.get()]
-        if not selected:
-            messagebox.showwarning("Warning", "You must select at least one column.", parent=self)
-            self.result = None  # Prevent closing
-        else:
-            self.result = selected
