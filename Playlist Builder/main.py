@@ -162,6 +162,7 @@ class PlaylistTab(ttk.Frame):
         self.context_menu.add_separator()
         # self.context_menu.add_command(label="Rename Tab", command=self.context_rename_tab)
         self.context_menu.add_command(label="Check File Existence", command=self.context_check_existence)
+        self.context_menu.add_command(label="Move Audacity Macro Output Here", command=self.context_move_macro_output)
 
         # Enable drag-and-drop for reordering playlist tracks in the treeview
         self.tree.bind('<ButtonPress-1>', self._on_tree_press)
@@ -793,6 +794,54 @@ class PlaylistTab(ttk.Frame):
                 messagebox.showerror("Error", "Path information is missing or file does not exist.")
         else:
             messagebox.showinfo("Open in Audacity", "Please select a track to open.")
+
+    def context_move_macro_output(self):
+        """Move the new file from macro_output to replace the original, then delete macro_output."""
+        selected_iids = self.get_selected_item_ids()
+        if not selected_iids:
+            self.app.set_status("No track selected for macro move.")
+            return
+        if len(selected_iids) > 1:
+            messagebox.showinfo("Macro Output Move", "Please select only one track.")
+            return
+        iid = selected_iids[0]
+        track_data = self.get_track_data_by_iid(iid)
+        old_path = track_data.get('path')
+        if not old_path:
+            messagebox.showerror("Macro Output Move", "No path for selected track.")
+            return
+        macro_dir = os.path.join(os.path.dirname(old_path), 'macro-output')
+        if not os.path.isdir(macro_dir):
+            messagebox.showerror("Macro Output Move", f"macro_output folder not found in {os.path.dirname(old_path)}.")
+            return
+        # Find the new file in macro_output (must match source name, any extension)
+        try:
+            base_name = os.path.splitext(os.path.basename(old_path))[0]
+            # Find file(s) in macro_dir with the same base name
+            files = [f for f in os.listdir(macro_dir) if os.path.isfile(os.path.join(macro_dir, f)) and os.path.splitext(f)[0] == base_name]
+            if not files:
+                messagebox.showerror("Macro Output Move", f"No file named '{base_name}.*' found in macro_output.")
+                return
+            if len(files) > 1:
+                messagebox.showwarning("Macro Output Move", f"Multiple files named '{base_name}.*' found in macro_output. Using the first one.")
+            macro_file = files[0]
+            macro_path = os.path.join(macro_dir, macro_file)
+            # Move (replace) the original file (allow extension change)
+            shutil.move(macro_path, old_path)
+            # Remove macro_output folder
+            shutil.rmtree(macro_dir)
+            self.app.set_status(f"Replaced {os.path.basename(old_path)} with macro output and deleted macro_output.")
+            # Reload metadata for this track
+            meta = load_audio_metadata(old_path)
+            for key in ['artist', 'title', 'album', 'genre', 'tracknumber', 'duration', 'bitrate', 'format', 'exists', 'path']:
+                track_data[key] = meta.get(key, track_data.get(key))
+            self.update_track_display(iid, track_data)
+            self.mark_dirty()
+            logging.info(f"Moved macro output {macro_file} to {old_path} and deleted macro_output folder.")
+        except Exception as e:
+            logging.error(f"[MacroOutputMove] Error: {e}")
+            messagebox.showerror("Macro Output Move", f"Failed to move macro output: {e}")
+            self.app.set_status("Macro output move failed.")
 
     def context_check_existence(self):
         """Re-checks existence for selected files."""
