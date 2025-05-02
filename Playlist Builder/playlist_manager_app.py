@@ -15,8 +15,8 @@ import time
 import tkinter.font as tkfont
 from metadata_utils import load_audio_metadata, save_audio_metadata
 import subprocess
-from common_components import (APP_NAME, SETTINGS_FILE, DEFAULT_COLUMNS, AVAILABLE_COLUMNS, 
-                             M3U_ENCODING, format_duration, open_file_location, )
+from utils import (APP_NAME, SETTINGS_FILE, DEFAULT_COLUMNS, AVAILABLE_COLUMNS, 
+                             M3U_ENCODING, format_duration)
 import main # Import main module for PlaylistTab class
 import logging
 logger = logging.getLogger(__name__)
