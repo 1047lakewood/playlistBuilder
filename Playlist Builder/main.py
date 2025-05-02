@@ -397,8 +397,8 @@ class PlaylistTab(ttk.Frame):
         newly_added_iids = []
         for track_info in track_data_list:
              # Ensure necessary keys exist, even if blank
-             track_info.setdefault('artist', 'Unknown Artist')
-             track_info.setdefault('title', os.path.splitext(os.path.basename(track_info.get('path','')))[0] if track_info.get('path') else 'Unknown Title')
+             track_info.setdefault('artist', ' ')
+             track_info.setdefault('title', os.path.splitext(os.path.basename(track_info.get('path','')))[0] if track_info.get('path') else ' ')
              track_info.setdefault('path', None)
              track_info.setdefault('exists', os.path.exists(track_info['path']) if track_info['path'] else False)
              # Add other defaults...
