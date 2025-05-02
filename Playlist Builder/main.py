@@ -224,7 +224,7 @@ class PlaylistTab(ttk.Frame):
         self.clear_search_button2.pack(side="left")
 
     def find_tracks(self, event=None):
-        find_term = self.find_var.get().lower()
+        find_term = self.find_var.get().strip().lower()
         if not find_term:
             self.refresh_display()
             return
@@ -868,10 +868,20 @@ class PlaylistTab(ttk.Frame):
             track_paths = []
             for line in lines:
                 line = line.strip()
-                if not line or line.startswith('#'):
+                # Only treat as a track if it is NOT blank, does NOT start with '#', and does NOT contain any non-path characters like ':' only as drive letter
+                # For M3U, valid track lines should NOT start with '#', and should be valid file paths
+                if not line:
                     continue
-                abs_path = os.path.abspath(os.path.join(os.path.dirname(filepath), line)) if not os.path.isabs(line) else line
-                track_paths.append(abs_path)
+                if line.startswith('#'):
+                    continue
+                # Defensive: skip if line is literally '#EXTM3U' or '#EXTINF' or any other common header
+                if line.upper() == '#EXTM3U' or line.upper().startswith('#EXTINF'):
+                    continue
+                # Additional: skip if the line does not look like a valid path (e.g. not containing a drive letter or path separator)
+                # Accept only lines that look like valid Windows paths
+                if not (':' in line or '\\' in line or '/' in line):
+                    continue
+                track_paths.append(line)
             # Use threads to load metadata in parallel for speedup
             import concurrent.futures
             new_tracks = []
@@ -914,32 +924,19 @@ class PlaylistTab(ttk.Frame):
             os.makedirs(playlist_dir, exist_ok=True) # Ensure directory exists
 
             with open(target_path, 'w', encoding=M3U_ENCODING) as f:
-                f.write("#EXTM3U\n") # Standard M3U header
-                # Use the current order from the Treeview (or _track_data if no filter)
-                track_paths_in_order = [self.get_track_data_by_iid(iid)['path'] for iid in self.tree.get_children('')]
-                # Or use self._track_data if filtering shouldn't affect save order
-                # track_paths_in_order = [track['path'] for track in self._track_data]
-
-                for track_path in track_paths_in_order:
-                    # Attempt to make paths relative to the playlist file
-                    try:
-                        relative_path = os.path.relpath(track_path, playlist_dir)
-                    except ValueError:
-                        # Happens if paths are on different drives (Windows)
-                        relative_path = track_path # Use absolute path
-
-                    # At the start of start_playback
-                    try:
-                        if pygame.mixer.get_init() is None:
-                            print("[WARN] Mixer not actually initialized at playback time. Attempting re-init.")
-                            pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=2048)
-                            print("[INFO] Mixer re-initialized at playback time.")
-                            self.pygame_initialized = True
-                    except Exception as e:
-                        print(f"[ERROR] Failed to re-initialize mixer at playback time: {e}")
-                        self.set_status(f"Audio Error: Could not initialize mixer for playback: {e}")
-                        return
-                    f.write(relative_path + "\n")
+                # Write extended M3U header
+                if target_path.lower().endswith('.m3u8'):
+                    f.write('#EXTM3U\n')
+                for track in self._track_data:
+                    path = track.get('path', '')
+                    if not path:
+                        continue
+                    duration = int(track.get('duration', -1) or -1)
+                    title = track.get('title', os.path.splitext(os.path.basename(path))[0])
+                    # Write EXTINF line
+                    f.write(f"#EXTINF:{duration},{title}\n")
+                    # Write absolute path
+                    f.write(path + "\n")
 
             self.filepath = target_path # Update file path if saved successfully
             self.mark_dirty(False)
@@ -1330,7 +1327,22 @@ class MetadataEditDialog(simpledialog.Dialog):
             self.entries[key] = var
             if row == 0: entry.focus_set() # Focus Title field
             row += 1
+        # --- Add Copy File Name Button ---
+        copy_btn = ttk.Button(master, text="Copy File Name", command=self.copy_file_name)
+        copy_btn.grid(row=row, column=0, columnspan=2, pady=(10, 2))
         return None # Focus handled above
+
+    def copy_file_name(self):
+        """Copy file name (no path, no extension) to clipboard and log the action."""
+        path = self.track_data.get('path', '')
+        if path:
+            base = os.path.basename(path)
+            name, _ = os.path.splitext(base)
+            self.clipboard_clear()
+            self.clipboard_append(name)
+            logging.info(f"Copied file name to clipboard: {name}")
+        else:
+            logging.warning("No file path found to copy file name.")
 
     def apply(self):
         self.result = {}
