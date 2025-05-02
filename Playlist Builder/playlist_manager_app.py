@@ -127,11 +127,7 @@ class PlaylistManagerApp(tk.Frame):
         self.file_menu.add_separator()
         self.file_menu.add_command(label="Exit", command=self.quit_app)
 
-        # Settings Menu
-        self.settings_menu = tk.Menu(self.main_menu, tearoff=0)
-        self.main_menu.add_cascade(label="Settings", menu=self.settings_menu)
-        self.settings_menu.add_command(label="Change Artist Directory...", command=self.open_settings_dialog)
-
+        
         # Edit Menu
         self.edit_menu = tk.Menu(self.main_menu, tearoff=0)
         self.main_menu.add_cascade(label="Edit", menu=self.edit_menu)
@@ -149,6 +145,11 @@ class PlaylistManagerApp(tk.Frame):
         self.view_menu.add_command(label="Refresh Current Playlist View", command=self.refresh_current_tab_view)
         self.view_menu.add_separator()
         self.view_menu.add_command(label="Show Filter Bar", command=self.toggle_filter_bar)
+
+        # Settings Menu
+        self.settings_menu = tk.Menu(self.main_menu, tearoff=0)
+        self.main_menu.add_cascade(label="Settings", menu=self.settings_menu)
+        self.settings_menu.add_command(label="Change Artist Directory...", command=self.open_settings_dialog)
 
         # --- Pre-listen Controls ---
         self.prelisten_frame = ttk.Frame(self)
