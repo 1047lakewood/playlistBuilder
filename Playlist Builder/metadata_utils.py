@@ -13,7 +13,7 @@ def load_audio_metadata(filepath):
     Always returns a valid dict, never raises ValueError or returns None, even for corrupt or unsupported files.
     """
     metadata = {
-        'artist': 'Unknown Artist',
+        'artist': ' ',
         'title': os.path.splitext(os.path.basename(filepath))[0],
         'album': 'Unknown Album',
         'genre': 'Unknown Genre',
@@ -38,7 +38,7 @@ def load_audio_metadata(filepath):
             return metadata
         if audio:
             try:
-                metadata['artist'] = ', '.join(audio.get('artist', ['Unknown Artist']))
+                metadata['artist'] = ', '.join(audio.get('artist', [' ']))
                 metadata['title'] = ', '.join(audio.get('title', [metadata['title']]))
                 metadata['album'] = ', '.join(audio.get('album', ['Unknown Album']))
                 metadata['genre'] = ', '.join(audio.get('genre', ['Unknown Genre']))
