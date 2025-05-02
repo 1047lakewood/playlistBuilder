@@ -430,15 +430,6 @@ class PlaylistTab(ttk.Frame):
              artist_base = os.path.splitext(artist)[0]
              # --- Update: match if any file in artist_dir startswith artist_base ---
              indicator = ''
-             artist_files = []
-             artist_dir = None
-             if hasattr(self.app, 'current_settings'):
-                artist_dir = self.app.current_settings.get('artist_directory')
-             if artist_dir and os.path.isdir(artist_dir):
-                try:
-                    artist_files = [os.path.splitext(fname)[0].lower() for fname in os.listdir(artist_dir)]
-                except Exception:
-                    pass
              if artist_base:
                 for name in artist_files:
                     if name.startswith(artist_base):
@@ -1169,13 +1160,11 @@ class PlaylistTab(ttk.Frame):
             return
         iid = self.tree.identify_row(event.y)
         if iid:
-            # Only start drag if clicking on a selected row and no modifiers
-            if iid in self.tree.selection():
-                self._dragged_iid = iid
-                self._dragged_index = self.tree.index(iid)
-            else:
-                self._dragged_iid = None
-                self._dragged_index = None
+            # If the row is not selected, select it (and only it)
+            if iid not in self.tree.selection():
+                self.tree.selection_set(iid)
+            self._dragged_iid = iid
+            self._dragged_index = self.tree.index(iid)
         else:
             self._dragged_iid = None
             self._dragged_index = None
