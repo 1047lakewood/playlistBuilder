@@ -933,8 +933,8 @@ class PlaylistManagerApp(tk.Frame):
 
     def update_prelisten_info(self, track_data):
          if track_data:
-             title = track_data.get('title', 'Unknown Title')
-             artist = track_data.get('artist', 'Unknown Artist')
+             title = track_data.get('title', ' ')
+             artist = track_data.get('artist', ' ')
              duration_str = format_duration(track_data.get('duration'))
              self.prelisten_label.config(text=f"{artist} - {title}")
              if track_data.get('path') != self.currently_playing_path:
