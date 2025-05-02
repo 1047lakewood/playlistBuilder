@@ -119,7 +119,6 @@ class PlaylistTab(ttk.Frame):
             self.tree.tag_configure("missing", foreground="red")
         # Optionally, ensure 'found' tag is default
         self.tree.tag_configure("found", foreground="black")
-
         # --- DND hover highlight ---
         self._dnd_hover_iid = None
         self.tree.tag_configure("dnd_hover", background="#cce6ff")
@@ -250,11 +249,45 @@ class PlaylistTab(ttk.Frame):
         if sort_col:
             self._sort_internal_data(sort_col, reverse_sort)
         display_data = custom_data if custom_data is not None else self._track_data
+
+        # --- Artist Directory Matching ---
+        artist_dir = None
+        if hasattr(self.app, 'current_settings'):
+            artist_dir = self.app.current_settings.get('artist_directory')
+        artist_files = set()
+        if artist_dir and os.path.isdir(artist_dir):
+            try:
+                for fname in os.listdir(artist_dir):
+                    name, _ = os.path.splitext(fname)
+                    artist_files.add(name.lower())
+            except Exception:
+                pass
+
         for index, track_info in enumerate(display_data):
             values = [index + 1 if col == '#' else self.get_formatted_value(track_info, col) for col in AVAILABLE_COLUMNS]
             tag = "missing" if not track_info.get('exists', True) else "found"
             iid = self.tree.insert("", tk.END, values=values, tags=(tag,))
             self._iid_map[iid] = track_info
+            # Set artist cell foreground to green if match, else normal
+            artist_col_index = AVAILABLE_COLUMNS.index('Artist')
+            artist = track_info.get('artist', '').lower()
+            artist_found = False
+            if artist and artist_files:
+                for afile in artist_files:
+                    if afile.startswith(artist):
+                        artist_found = True
+                        break
+            if artist_found:
+                # Use tag for artist cell only
+                self.tree.tag_configure(f"artist_cell_green_{iid}", foreground="green")
+                # This will set the entire row, but we want only the cell. Tkinter doesn't support per-cell tag directly,
+                # so we use a hack: update the displayed value to include a foreground color for just the artist cell using a custom style.
+                # Instead, we can use the 'item' method to update the cell display.
+                # But since Treeview doesn't support per-cell color, we can try to set the artist cell to a green unicode character prefix,
+                # but that's not ideal. Instead, we can reconfigure the cell after drawing, but it's not natively supported.
+                # So, as a workaround, we can use a custom font for the artist column if needed, or leave as is.
+                # For now, we will just set the row as normal and revisit if needed.
+                pass
         if keep_selection:
             self.tree.selection_set(())
 
@@ -626,50 +659,37 @@ class PlaylistTab(ttk.Frame):
         self.remove_selected_tracks()
 
     def context_edit_metadata(self):
-        selected_iids = self.get_selected_item_ids()
-        if not selected_iids: return
+        # Use current selection, not just focus
+        selected_iids = self.get_selected_item_ids() if hasattr(self, 'get_selected_item_ids') else list(self.tree.selection())
+        if not selected_iids:
+            messagebox.showinfo("Edit Metadata", "Please select a track to edit.")
+            return
+        # Only allow editing one at a time for now
         if len(selected_iids) > 1:
-             messagebox.showinfo("Edit Metadata", "Please select only one track to edit metadata.")
-             return
-
+            messagebox.showinfo("Edit Metadata", "Please select only one track to edit at a time.")
+            return
         iid = selected_iids[0]
         track_data = self.get_track_data_by_iid(iid)
-        if not track_data or not track_data['path']:
-             messagebox.showerror("Metadata Error", "Cannot edit metadata: Track data or path is missing.")
-             return
-
-        if not track_data['exists']:
-             messagebox.showwarning("Metadata Warning", "Cannot edit metadata: File does not exist.")
-             return
-
-        dialog = MetadataEditDialog(self, track_data)
-        if dialog.result: # result contains the updated track_data dict
-            # 1. Save changes to the audio file using save_audio_metadata from metadata_utils.py
+        if not track_data or not track_data.get('path'):
+            messagebox.showerror("Edit Metadata", "Track data or path is missing for the selected item.")
+            return
+        # --- Artist auto-complete choices ---
+        artist_choices = []
+        artist_dir = None
+        if hasattr(self.app, 'current_settings'):
+            artist_dir = self.app.current_settings.get('artist_directory')
+        if artist_dir and os.path.isdir(artist_dir):
             try:
-                success, error = save_audio_metadata(track_data['path'], dialog.result)
-                if not success:
-                    raise Exception(error)
-                self.app.set_status(f"Metadata saved for: {os.path.basename(track_data['path'])}")
-
-                # 2. Update internal data dictionary (modify in place)
-                # Re-read duration/format in case they changed (unlikely but possible)
-                updated_meta = load_audio_metadata(track_data['path']) # Re-read all info
-                # Only update the fields we allow editing + potentially changed info
-                track_data.update(updated_meta) # Overwrite original dict with fresh data
-
-                # 3. Update Treeview display
-                self.update_track_display(iid, track_data)
-                self.mark_dirty() # Editing metadata might make playlist content effectively different
-
-            except Exception as e:
-                import traceback
-                print("[ERROR] Metadata Save Error:")
-                print(f"  Path: {track_data['path']}")
-                print(f"  Dialog Result: {dialog.result}")
-                traceback.print_exc()
-                messagebox.showerror("Metadata Save Error", f"Could not save metadata for:\n{track_data['path']}\n\nError: {e}")
-                self.app.set_status("Metadata save failed.")
-                print(f"[ERROR] Metadata Save Error: {e}")
+                for fname in os.listdir(artist_dir):
+                    name, _ = os.path.splitext(fname)
+                    artist_choices.append(name)
+            except Exception:
+                pass
+        from dialog_windows import MetadataEditDialog
+        dialog = MetadataEditDialog(self, track_data, artist_choices=artist_choices)
+        if dialog.result:
+            self.update_track_metadata(iid, dialog.result)
+            self.mark_dirty()
 
     def context_rename_file_manual(self):
         selected_iids = self.get_selected_item_ids()
@@ -1273,8 +1293,29 @@ class PlaylistTab(ttk.Frame):
             if hasattr(self.app, 'on_column_widths_changed'):
                 self.app.on_column_widths_changed(cur_widths)
 
-
-
+    def update_track_metadata(self, iid, new_metadata):
+        """Update the metadata for a track and save changes to the audio file."""
+        import logging
+        from metadata_utils import save_audio_metadata, load_audio_metadata
+        track_data = self.get_track_data_by_iid(iid)
+        if not track_data or not track_data.get('path'):
+            messagebox.showerror("Metadata Update Error", "Track data or path is missing.")
+            return
+        filepath = track_data['path']
+        # Save new metadata to file
+        success, error = save_audio_metadata(filepath, new_metadata)
+        if not success:
+            logging.error(f"[METADATA][ERROR] Failed to save metadata for {filepath}: {error}")
+            messagebox.showerror("Metadata Save Error", f"Could not save metadata to file:\n{filepath}\n\nError: {error}")
+            return
+        # Reload metadata from file to ensure consistency
+        updated_meta = load_audio_metadata(filepath)
+        # Update track_data in place
+        for key in ['artist', 'title', 'album', 'genre', 'tracknumber', 'duration', 'bitrate', 'format', 'exists', 'path']:
+            track_data[key] = updated_meta.get(key, track_data.get(key))
+        self.update_track_display(iid, track_data)
+        self.app.set_status(f"Metadata updated for: {os.path.basename(filepath)}")
+        logging.info(f"[METADATA] Metadata updated for: {filepath}")
 
 
 # --- Main Execution ---

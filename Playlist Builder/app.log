@@ -1,10 +1,12 @@
-2025-05-02 10:58:15,427 - root - INFO - Application starting...
-2025-05-02 10:58:15,546 - playlist_manager_app - INFO - Attempting to load profile: a (startup=True)
-2025-05-02 10:58:15,548 - playlist_manager_app - INFO - Found profile 'a'. Proceeding with load.
-2025-05-02 10:58:15,548 - playlist_manager_app - INFO - Closing existing tabs before loading profile tabs.
-2025-05-02 10:58:15,548 - playlist_manager_app - INFO - Loading 1 tabs specified in profile 'a'.
-2025-05-02 10:58:15,549 - playlist_manager_app - INFO - Processing tab 1/1: filepath='G:/Playlists/Erev playlists/Main playlist Pesach Chol Hamoed 5785.m3u8', display_name='Main playlist Pesach Chol Hamoed 5785.m3u8'
-2025-05-02 10:58:15,555 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/Main playlist Pesach Chol Hamoed 5785.m3u8
-2025-05-02 10:58:16,384 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/Main playlist Pesach Chol Hamoed 5785.m3u8': True
-2025-05-02 10:58:16,417 - playlist_manager_app - INFO - Applying column settings to all tabs: ['#', 'Artist', 'Title', 'Duration', 'Path', 'Exists']
-2025-05-02 10:58:16,417 - playlist_manager_app - INFO - Profile 'a' loading complete.
+2025-05-02 14:12:54,812 - root - INFO - Application starting...
+2025-05-02 14:12:54,904 - playlist_manager_app - INFO - Attempting to load profile: a (startup=True)
+2025-05-02 14:12:54,904 - playlist_manager_app - INFO - Found profile 'a'. Proceeding with load.
+2025-05-02 14:12:54,904 - playlist_manager_app - INFO - Closing existing tabs before loading profile tabs.
+2025-05-02 14:12:54,904 - playlist_manager_app - INFO - Loading 1 tabs specified in profile 'a'.
+2025-05-02 14:12:54,904 - playlist_manager_app - INFO - Processing tab 1/1: filepath='G:/Playlists/Erev playlists/Main playlist Pesach Chol Hamoed 5785.m3u8', display_name='Main playlist Pesach Chol Hamoed 5785.m3u8'
+2025-05-02 14:12:54,910 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/Main playlist Pesach Chol Hamoed 5785.m3u8
+2025-05-02 14:12:55,928 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/Main playlist Pesach Chol Hamoed 5785.m3u8': True
+2025-05-02 14:12:55,964 - playlist_manager_app - INFO - Applying column settings to all tabs: ['#', 'Artist', 'Title', 'Duration', 'Path', 'Exists']
+2025-05-02 14:12:55,965 - playlist_manager_app - INFO - Profile 'a' loading complete.
+2025-05-02 14:13:37,372 - root - INFO - [METADATA] Metadata updated for: G:\Shiurim\R Avrum Mordche Malach\rabbi_avrum mordche_malach_pesach-the-korban-todah-and-matzah M1.mp3
+2025-05-02 14:13:49,037 - root - INFO - [METADATA] Metadata updated for: G:\Shiurim\R Avrum Mordche Malach\rabbi_avrum mordche_malach_pesach-the-korban-todah-and-matzah M1.mp3

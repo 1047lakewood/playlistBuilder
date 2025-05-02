@@ -127,6 +127,11 @@ class PlaylistManagerApp(tk.Frame):
         self.file_menu.add_separator()
         self.file_menu.add_command(label="Exit", command=self.quit_app)
 
+        # Settings Menu
+        self.settings_menu = tk.Menu(self.main_menu, tearoff=0)
+        self.main_menu.add_cascade(label="Settings", menu=self.settings_menu)
+        self.settings_menu.add_command(label="Change Artist Directory...", command=self.open_settings_dialog)
+
         # Edit Menu
         self.edit_menu = tk.Menu(self.main_menu, tearoff=0)
         self.main_menu.add_cascade(label="Edit", menu=self.edit_menu)
@@ -1129,3 +1134,12 @@ class PlaylistManagerApp(tk.Frame):
 
     def get_column_widths(self):
         return getattr(self, '_column_widths', {})
+
+    def open_settings_dialog(self):
+        """Open a dialog for user to select the artist directory and persist it."""
+        current_dir = self.current_settings.get("artist_directory", "")
+        new_dir = filedialog.askdirectory(title="Select Artist Directory", initialdir=current_dir or os.getcwd())
+        if new_dir:
+            self.current_settings["artist_directory"] = new_dir
+            self.save_settings()
+            messagebox.showinfo("Settings", f"Artist directory set to:\n{new_dir}")

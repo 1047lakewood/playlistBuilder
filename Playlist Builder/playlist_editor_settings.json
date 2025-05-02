@@ -3,7 +3,6 @@
     "#",
     "Artist",
     "Title",
-    "Album",
     "Duration",
     "Path",
     "Exists"
@@ -30,5 +29,6 @@
   "audio_device": null,
   "open_tabs": [
     "G:/Playlists/Erev playlists/Main playlist Pesach Chol Hamoed 5785.m3u8"
-  ]
+  ],
+  "artist_directory": "G:/Shiurim/IntrosCleanedUp"
 }
