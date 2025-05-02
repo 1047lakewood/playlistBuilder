@@ -18,6 +18,10 @@ import logging # Add logging import
 
 from dialog_windows import MetadataEditDialog
 
+# --- Add indicator column for artist directory match ---
+INDICATOR_COLUMN = 'Intro'
+CUSTOM_COLUMNS = ['#', INDICATOR_COLUMN, 'Artist', 'Title', 'Duration', 'Path', 'Exists']
+
 def get_metadata(filepath):
     # Deprecated: Use load_audio_metadata from metadata_utils.py
     return load_audio_metadata(filepath)
@@ -35,7 +39,8 @@ class PlaylistTab(ttk.Frame):
         self._iid_map = {} # Maps Treeview iid to index in _track_data for quick lookup
         self.tab_display_name = os.path.basename(filepath) if filepath else "Untitled Playlist"
 
-        self.visible_columns = initial_columns if initial_columns else DEFAULT_COLUMNS
+        # Use custom columns for display
+        self.visible_columns = self.ensure_indicator_column(initial_columns if initial_columns else CUSTOM_COLUMNS)
 
         # --- UI Elements ---
         # Toolbar Frame
@@ -87,8 +92,8 @@ class PlaylistTab(ttk.Frame):
 
         self.tree = ttk.Treeview(
             self.tree_frame,
-            columns=AVAILABLE_COLUMNS, # Define all possible columns
-            displaycolumns=self.visible_columns, # Show only the selected ones
+            columns=CUSTOM_COLUMNS,
+            displaycolumns=self.visible_columns,
             show="headings",
             yscrollcommand=self.scrollbar_y.set,
             xscrollcommand=self.scrollbar_x.set,
@@ -195,6 +200,16 @@ class PlaylistTab(ttk.Frame):
         self.bind_all('<Control-s>', self._on_ctrl_s)
         self.bind_all('<Control-S>', self._on_ctrl_s)
 
+    def ensure_indicator_column(self, columns):
+        cols = list(columns)
+        if INDICATOR_COLUMN not in cols:
+            if '#' in cols:
+                idx = cols.index('#') + 1
+                cols.insert(idx, INDICATOR_COLUMN)
+            else:
+                cols.insert(0, INDICATOR_COLUMN)
+        return cols
+
     def context_rename_tab(self):
         new_name = simpledialog.askstring("Rename Tab", "Enter new tab name:", initialvalue=self.tab_display_name, parent=self)
         if new_name:
@@ -254,40 +269,27 @@ class PlaylistTab(ttk.Frame):
         artist_dir = None
         if hasattr(self.app, 'current_settings'):
             artist_dir = self.app.current_settings.get('artist_directory')
-        artist_files = set()
+        artist_files = []
         if artist_dir and os.path.isdir(artist_dir):
             try:
-                for fname in os.listdir(artist_dir):
-                    name, _ = os.path.splitext(fname)
-                    artist_files.add(name.lower())
+                artist_files = [os.path.splitext(fname)[0].lower() for fname in os.listdir(artist_dir)]
             except Exception:
                 pass
 
         for index, track_info in enumerate(display_data):
-            values = [index + 1 if col == '#' else self.get_formatted_value(track_info, col) for col in AVAILABLE_COLUMNS]
+            artist = track_info.get('artist', '').strip().lower()
+            artist_base = os.path.splitext(artist)[0]
+            # --- Update: match if any file in artist_dir startswith artist_base ---
+            indicator = ''
+            if artist_base:
+                for name in artist_files:
+                    if name.startswith(artist_base):
+                        indicator = '•'
+                        break
+            values = [index + 1, indicator] + [self.get_formatted_value(track_info, col) for col in CUSTOM_COLUMNS if col not in ['#', INDICATOR_COLUMN]]
             tag = "missing" if not track_info.get('exists', True) else "found"
             iid = self.tree.insert("", tk.END, values=values, tags=(tag,))
             self._iid_map[iid] = track_info
-            # Set artist cell foreground to green if match, else normal
-            artist_col_index = AVAILABLE_COLUMNS.index('Artist')
-            artist = track_info.get('artist', '').lower()
-            artist_found = False
-            if artist and artist_files:
-                for afile in artist_files:
-                    if afile.startswith(artist):
-                        artist_found = True
-                        break
-            if artist_found:
-                # Use tag for artist cell only
-                self.tree.tag_configure(f"artist_cell_green_{iid}", foreground="green")
-                # This will set the entire row, but we want only the cell. Tkinter doesn't support per-cell tag directly,
-                # so we use a hack: update the displayed value to include a foreground color for just the artist cell using a custom style.
-                # Instead, we can use the 'item' method to update the cell display.
-                # But since Treeview doesn't support per-cell color, we can try to set the artist cell to a green unicode character prefix,
-                # but that's not ideal. Instead, we can reconfigure the cell after drawing, but it's not natively supported.
-                # So, as a workaround, we can use a custom font for the artist column if needed, or leave as is.
-                # For now, we will just set the row as normal and revisit if needed.
-                pass
         if keep_selection:
             self.tree.selection_set(())
 
@@ -335,13 +337,31 @@ class PlaylistTab(ttk.Frame):
         """Updates a single row in the treeview."""
         if iid in self._iid_map:
             # Always recalculate the # column index for correct display
-            # Find the visible index of this iid
             all_iids = list(self.tree.get_children())
             try:
                 row_index = all_iids.index(iid)
             except ValueError:
                 row_index = None
-            values = [row_index + 1 if col == '#' and row_index is not None else self.get_formatted_value(track_data, col) for col in AVAILABLE_COLUMNS]
+            # --- Fix: recalculate artist_files for indicator column ---
+            artist_files = []
+            artist_dir = None
+            if hasattr(self.app, 'current_settings'):
+                artist_dir = self.app.current_settings.get('artist_directory')
+            if artist_dir and os.path.isdir(artist_dir):
+                try:
+                    artist_files = [os.path.splitext(fname)[0].lower() for fname in os.listdir(artist_dir)]
+                except Exception:
+                    pass
+            artist = track_data.get('artist', '').strip().lower()
+            artist_base = os.path.splitext(artist)[0]
+            # --- Update: match if any file in artist_dir startswith artist_base ---
+            indicator = ''
+            if artist_base:
+                for name in artist_files:
+                    if name.startswith(artist_base):
+                        indicator = '•'
+                        break
+            values = [row_index + 1, indicator] + [self.get_formatted_value(track_data, col) for col in CUSTOM_COLUMNS if col not in ['#', INDICATOR_COLUMN]]
             tag = "missing" if not track_data.get('exists', True) else "found"
             self.tree.item(iid, values=values, tags=(tag,))
             # Update the map reference just in case the dict instance changed (it shouldn't if modified in place)
@@ -406,7 +426,25 @@ class PlaylistTab(ttk.Frame):
              self._track_data.append(track_info)
 
              # Insert directly into treeview for immediate feedback (might be slow for huge additions)
-             values = [self.get_formatted_value(track_info, col) for col in AVAILABLE_COLUMNS]
+             artist = track_info.get('artist', '').strip().lower()
+             artist_base = os.path.splitext(artist)[0]
+             # --- Update: match if any file in artist_dir startswith artist_base ---
+             indicator = ''
+             artist_files = []
+             artist_dir = None
+             if hasattr(self.app, 'current_settings'):
+                artist_dir = self.app.current_settings.get('artist_directory')
+             if artist_dir and os.path.isdir(artist_dir):
+                try:
+                    artist_files = [os.path.splitext(fname)[0].lower() for fname in os.listdir(artist_dir)]
+                except Exception:
+                    pass
+             if artist_base:
+                for name in artist_files:
+                    if name.startswith(artist_base):
+                        indicator = '•'
+                        break
+             values = [self.get_formatted_value(track_info, col) for col in CUSTOM_COLUMNS]
              tag = "missing" if not track_info.get('exists', True) else "found"
              iid = self.tree.insert("", tk.END, values=values, tags=(tag,))
              self._iid_map[iid] = track_info
@@ -975,38 +1013,33 @@ class PlaylistTab(ttk.Frame):
     # --- Treeview Display and Interaction ---
 
     def setup_columns(self):
-        """Sets up the Treeview columns based on AVAILABLE_COLUMNS."""
-        # Configure all potential columns once
-        col_widths = {'#': 40, 'Artist': 150, 'Title': 250, 'Album': 150, 'Genre': 100, 'TrackNumber': 40, 'Duration': 60, 'Path': 300, 'Exists': 50, 'Bitrate':60, 'Format': 60}
-        col_anchors = {'#': 'e', 'TrackNumber': 'e', 'Duration': 'e', 'Exists': 'center', 'Bitrate':'e'}
-
-        # Use app-level saved widths if available
+        """Sets up the Treeview columns based on CUSTOM_COLUMNS."""
+        col_widths = {'#': 40, INDICATOR_COLUMN: 18, 'Artist': 150, 'Title': 250, 'Album': 150, 'Genre': 100, 'TrackNumber': 40, 'Duration': 60, 'Path': 300, 'Exists': 50, 'Bitrate':60, 'Format': 60}
+        col_anchors = {'#': 'e', INDICATOR_COLUMN: 'center', 'TrackNumber': 'e', 'Duration': 'e', 'Exists': 'center', 'Bitrate':'e'}
         saved_widths = getattr(self.app, 'get_column_widths', lambda: None)() or {}
-        for col in AVAILABLE_COLUMNS:
+        for col in CUSTOM_COLUMNS:
             width = saved_widths.get(col, col_widths.get(col, 100))
             self.tree.heading(col, text=col)
-            self.tree.column(col, width=width, anchor=col_anchors.get(col, 'w'), stretch=tk.NO if col in ['#','Duration','Exists','TrackNumber','Bitrate','Format'] else tk.YES)
-
-        # Apply the currently visible columns
+            self.tree.column(col, width=width, anchor=col_anchors.get(col, 'w'), stretch=tk.NO if col in ['#', INDICATOR_COLUMN, 'Duration','Exists','TrackNumber','Bitrate','Format'] else tk.YES)
         self.update_columns(self.visible_columns)
 
     def update_columns(self, visible_column_ids):
         """Updates which columns are visible in the Treeview."""
-        self.visible_columns = visible_column_ids
+        self.visible_columns = self.ensure_indicator_column(visible_column_ids)
         self.tree['displaycolumns'] = self.visible_columns
         # No need to re-setup headings/widths, just visibility
 
 
     def update_displayed_columns(self, new_columns):
         """Updates the columns visible in the treeview."""
-        self.visible_columns = new_columns
+        self.visible_columns = self.ensure_indicator_column(new_columns)
         try:
-            # Filter to only include columns that actually exist in AVAILABLE_COLUMNS
-            valid_display_columns = [col for col in new_columns if col in AVAILABLE_COLUMNS]
+            # Filter to only include columns that actually exist in CUSTOM_COLUMNS
+            valid_display_columns = [col for col in self.visible_columns if col in CUSTOM_COLUMNS]
             if not valid_display_columns:
                 # Fallback if somehow all columns are invalid
-                valid_display_columns = DEFAULT_COLUMNS
-                self.visible_columns = DEFAULT_COLUMNS # Update internal state too
+                valid_display_columns = CUSTOM_COLUMNS
+                self.visible_columns = CUSTOM_COLUMNS # Update internal state too
 
             self.tree.config(displaycolumns=valid_display_columns)
             # Optional: Re-run setup if column widths/headings depend on visibility?
@@ -1073,7 +1106,7 @@ class PlaylistTab(ttk.Frame):
         for track in self.app.clipboard:
             track_copy = track.copy()
             self._track_data.insert(insert_index, track_copy)
-            values = [self.get_formatted_value(track_copy, col) for col in AVAILABLE_COLUMNS]
+            values = [self.get_formatted_value(track_copy, col) for col in CUSTOM_COLUMNS]
             tag = "missing" if not track_copy.get('exists', True) else "found"
             iid = self.tree.insert("", insert_index, values=values, tags=(tag,))
             self._iid_map[iid] = track_copy
@@ -1287,7 +1320,7 @@ class PlaylistTab(ttk.Frame):
         # Save column widths after user resizes
         if not hasattr(self, 'tree'):
             return
-        cur_widths = {col: self.tree.column(col, 'width') for col in AVAILABLE_COLUMNS}
+        cur_widths = {col: self.tree.column(col, 'width') for col in CUSTOM_COLUMNS}
         if cur_widths != getattr(self, '_last_column_widths', {}):
             self._last_column_widths = cur_widths.copy()
             if hasattr(self.app, 'on_column_widths_changed'):
@@ -1316,7 +1349,8 @@ class PlaylistTab(ttk.Frame):
         self.update_track_display(iid, track_data)
         self.app.set_status(f"Metadata updated for: {os.path.basename(filepath)}")
         logging.info(f"[METADATA] Metadata updated for: {filepath}")
-
+        # --- Force update of only this track in the treeview ---
+        self.update_track_display(iid, track_data)
 
 # --- Main Execution ---
 
