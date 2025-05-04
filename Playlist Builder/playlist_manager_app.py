@@ -1,28 +1,20 @@
 import tkinter as tk
+
+
 from tkinter import ttk, filedialog, simpledialog, messagebox
 import os
-import sys
 import json
-import shutil
-from mutagen import File as MutagenFile
-from mutagen.id3 import ID3NoHeaderError
-from mutagen.flac import FLACNoHeaderError
-from mutagen.mp4 import MP4NoTrackError
-from mutagen.oggvorbis import OggVorbisHeaderError
+
 import pygame # For prelistening
-import threading # For non-blocking prelisten update
 import time
-import tkinter.font as tkfont
-from metadata_utils import load_audio_metadata, save_audio_metadata
-import subprocess
+
 from utils import (APP_NAME, SETTINGS_FILE, DEFAULT_COLUMNS, AVAILABLE_COLUMNS, 
-                             M3U_ENCODING, format_duration)
-import main # Import main module for PlaylistTab class
+                             format_duration)
+from playlist_tab import PlaylistTab
+import ui_setup 
 import logging
 logger = logging.getLogger(__name__)
 from dialog_windows import ColumnChooserDialog
-# Import PlaylistTab at the module level to avoid circular imports
-PlaylistTab = main.PlaylistTab
 
 class PlaylistManagerApp(tk.Frame):
     def __init__(self, master=None):
@@ -43,152 +35,9 @@ class PlaylistManagerApp(tk.Frame):
         # --- Data ---
         self.clipboard = [] # Simple list to hold track data dictionaries for copy/paste
 
-        # --- UI Elements ---
-        # Set modern, slightly larger font for the app
-        default_font = tkfont.nametofont("TkDefaultFont")
-        default_font.configure(size=12, family="Segoe UI")
-        self.option_add("*Font", default_font)
-        self.option_add("*TCombobox*Listbox.font", default_font)
-        self.option_add("*Treeview*Font", default_font)
-        # Use a separate font object for headings/tabs
-        heading_font = default_font.copy()
-        heading_font.configure(weight="bold")
-        self.option_add("*Treeview*Heading.Font", heading_font)
-        self.option_add("*Menu.Font", default_font)
-        # Make the top bar menu font larger
-        menu_font = default_font.copy()
-        menu_font.configure(size=12, family="Segoe UI")
-        self.option_add("*Menu.Font", menu_font)
-        self.option_add("*Button.Font", default_font)
-        self.option_add("*Label.Font", default_font)
-        self.option_add("*Entry.Font", default_font)
-        self.option_add("*TEntry.Font", default_font)
-        self.option_add("*TNotebook.Tab.Font", heading_font)
-
-
-        # Modern theme
-        style = ttk.Style(self)
-        style.theme_use("clam")
-        # SMALL font/padding for normal (unselected) tabs
-        normal_tab_font = heading_font.copy()
-        normal_tab_font.configure(size=9)
-        #make the tabs look smaller with less padding
-        style.configure("TNotebook.Tab", padding=[5, 2], font=normal_tab_font, background="#e0e0eb", foreground="#222")
-
-        # LARGE font/padding for SELECTED tab (should look like previous unselected tabs)
-        selected_tab_font = heading_font.copy()
-        selected_tab_font.configure(size=35, weight="bold")
-
-
-        style.map("TNotebook.Tab",
-                  background=[("selected", "#f0f0f7"), ("!selected", "#e0e0eb")],
-                  foreground=[("selected", "#222"), ("!selected", "#222")],
-                  font=[("selected", selected_tab_font), ("!selected", normal_tab_font)])
-        style.configure("TNotebook", background="#f0f0f7")
-        style.configure("Treeview", rowheight=28, font=default_font, fieldbackground="#fff", background="#fff", height=22)
-        style.configure("Treeview.Heading", font=heading_font, background="#e0e0eb", foreground="#222")
-        style.configure("TLabel", font=default_font)
-        style.configure("TButton", font=default_font)
-        style.configure("TEntry", font=default_font)
-        style.map("TButton", background=[("active", "#e0e0eb")])
-
-
-        # --- Main Area ---
-        self.notebook = ttk.Notebook(self)
-        self.notebook.enable_traversal()
-        self.notebook.bind("<ButtonPress-1>", self._on_tab_press)
-        self.notebook.bind("<B1-Motion>", self._on_tab_drag)
-        self.notebook.bind("<ButtonRelease-1>", self._on_tab_release)
-        self._dragged_tab_index = None
-        self._dragged_tab_id = None
-        self.notebook.pack(expand=True, fill="both", side="top", padx=5, pady=5)
-        self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_change)
-        self.notebook.bind("<Button-3>", self._on_tab_right_click_context)
-
-        # --- Restore Menu Bar (moved after font/theme setup to ensure it appears) ---
-        self.main_menu = tk.Menu(self.master)
-        self.master.config(menu=self.main_menu)
-
-        # File Menu
-        self.file_menu = tk.Menu(self.main_menu, tearoff=0)
-        self.main_menu.add_cascade(label="File", menu=self.file_menu)
-        self.file_menu.add_command(label="New Playlist Tab", command=self.add_new_tab)
-        self.file_menu.add_command(label="Open Playlist(s)...", command=self.open_playlists)
-        self.file_menu.add_separator()
-        self.file_menu.add_command(label="Save Current Playlist", command=self.save_current_playlist)
-        self.file_menu.add_command(label="Save Current Playlist As...", command=lambda: self.save_current_playlist(save_as=True))
-        self.file_menu.add_separator()
-        self.file_menu.add_command(label="Save Profile...", command=self.save_profile)
-        self.load_profile_menu = tk.Menu(self.main_menu, tearoff=0) # Dynamic menu
-        self.file_menu.add_cascade(label="Load Profile", menu=self.load_profile_menu)
-        self.update_load_profile_menu()
-        self.file_menu.add_separator()
-        self.file_menu.add_command(label="Close Current Tab", command=self.close_current_tab)
-        self.file_menu.add_separator()
-        self.file_menu.add_command(label="Exit", command=self.quit_app)
-
         
-        # Edit Menu
-        self.edit_menu = tk.Menu(self.main_menu, tearoff=0)
-        self.main_menu.add_cascade(label="Edit", menu=self.edit_menu)
-        self.edit_menu.add_command(label="Copy Selected", command=self.copy_selected)
-        self.edit_menu.add_command(label="Cut Selected", command=self.cut_selected)
-        self.edit_menu.add_command(label="Paste Tracks", command=self.paste_tracks)
-        self.edit_menu.add_separator()
-        self.edit_menu.add_command(label="Remove Selected", command=self.remove_selected_from_current)
-        # Add more later: Select All, Find, etc.
-
-        # View Menu
-        self.view_menu = tk.Menu(self.main_menu, tearoff=0)
-        self.main_menu.add_cascade(label="View", menu=self.view_menu)
-        self.view_menu.add_command(label="Customize Columns...", command=self.customize_columns)
-        self.view_menu.add_command(label="Refresh Current Playlist View", command=self.refresh_current_tab_view)
-        self.view_menu.add_separator()
-        self.view_menu.add_command(label="Show Filter Bar", command=self.toggle_filter_bar)
-
-        # Settings Menu
-        self.settings_menu = tk.Menu(self.main_menu, tearoff=0)
-        self.main_menu.add_cascade(label="Settings", menu=self.settings_menu)
-        self.settings_menu.add_command(label="Change Artist Directory...", command=self.open_settings_dialog)
-
-        # --- Pre-listen Controls ---
-        self.prelisten_frame = ttk.Frame(self)
-        self.prelisten_frame.pack_forget() # Hide by default
-
-        self.play_pause_button = ttk.Button(self.prelisten_frame, text="▶ Play", command=self.toggle_play_pause, width=8)
-        self.play_pause_button.pack(side="left", padx=(0,5))
-        self.stop_button = ttk.Button(self.prelisten_frame, text="■ Stop", command=self.stop_playback, width=8)
-        self.stop_button.pack(side="left", padx=(0,5))
-
-        # Song title label
-        self.prelisten_label = ttk.Label(self.prelisten_frame, text="No track selected.", anchor="w", width=40)
-        self.prelisten_label.pack(side="top", anchor="w", padx=5, pady=(0,2), fill="x")
-
-        # Scrubber/progress bar (styled for a modern look, easier to drag)
-        self.progress_var = tk.DoubleVar(value=0)
-        self.progress_scale = ttk.Scale(self.prelisten_frame, from_=0, to=100, orient="horizontal", variable=self.progress_var, command=self.on_scrub, length=250)
-        self.progress_scale.pack(side="top", fill="x", expand=True, padx=(5, 40), pady=(0,2))
-        self.progress_scale.bind("<ButtonRelease-1>", self.on_scrub_release)
-        self.progress_scale.configure(takefocus=True)
-
-        # Volume slider (no label)
-        self.volume_var = tk.DoubleVar(value=1.0)
-        self.volume_scale = ttk.Scale(self.prelisten_frame, from_=0, to=1, orient="horizontal", variable=self.volume_var, command=self.on_volume_change, length=80)
-        self.volume_scale.pack(side="left", padx=(5, 5), pady=(5,0))
-
-        self.progress_label = ttk.Label(self.prelisten_frame, text="00:00 / 00:00", width=15, anchor='e')
-        self.progress_label.pack(side="left", padx=5)
-
-        # X button to hide player (moved to end)
-        self.hide_player_button = ttk.Button(self.prelisten_frame, text="✖", width=3, command=self.hide_prelisten_player)
-        self.hide_player_button.pack(side="right", padx=(5,5), pady=(0,0))
-        self.hide_player_button.pack_forget()  # Hide by default
-
-        # --- Status Bar ---
-        self.status_var = tk.StringVar()
-        self.status_bar = ttk.Label(self, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
-        self.status_bar.pack(side="bottom", fill=tk.X)
-        self.set_status("Ready.")
+        ui_setup.setup_menu_bar(self)
+        ui_setup.setup_ui(self)
 
         # --- Playback State ---
         self.currently_playing_path = None
@@ -217,7 +66,6 @@ class PlaylistManagerApp(tk.Frame):
         # Initialize persistent column widths
         self._column_widths = self.current_settings.get('column_widths', {})
 
-    # ... (rest of PlaylistManagerApp methods unchanged)
 
     def set_status(self, message):
         self.status_var.set(message)
