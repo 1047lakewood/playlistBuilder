@@ -13,7 +13,7 @@ class SettingsDialog(tk.Toplevel):
         self.current_settings = current_settings
         self.save_callback = save_callback
         self.selected_category = tk.StringVar(value="General")
-        self.categories = ["General", "Storage"]
+        self.categories = ["General", "Persistence"]
         self._build_ui()
         self.center_window()
 
@@ -42,8 +42,8 @@ class SettingsDialog(tk.Toplevel):
             widget.destroy()
         if cat == "General":
             self._show_general_settings()
-        elif cat == "Storage":
-            self._show_storage_settings()
+        elif cat == "Persistence":
+            self._show_persistence_settings()
 
     def _show_general_settings(self):
         # Artist Directory setting
@@ -52,7 +52,7 @@ class SettingsDialog(tk.Toplevel):
         label = ttk.Label(self.right_frame, text="Artist Directory:")
         label.grid(row=0, column=0, sticky="w", pady=(10, 2), padx=(10, 2))
         self.artist_dir_var = tk.StringVar(value=self.current_settings.get("artist_directory", ""))
-        entry = ttk.Entry(self.right_frame, textvariable=self.artist_dir_var, width=32)
+        entry = ttk.Entry(self.right_frame, textvariable=self.artist_dir_var, width=24)
         entry.grid(row=1, column=0, sticky="w", padx=(10, 2), pady=(0, 0))
         browse_btn = ttk.Button(self.right_frame, text="Browse...", command=self._browse_artist_dir)
         browse_btn.grid(row=1, column=1, sticky="w", padx=(2, 10), pady=(0, 0))
@@ -72,12 +72,12 @@ class SettingsDialog(tk.Toplevel):
         self.status_label.config(text="Saved.")
         # Do not close the window
 
-    def _show_storage_settings(self):
+    def _show_persistence_settings(self):
         # Settings JSON location
         label = ttk.Label(self.right_frame, text="Settings File Location:")
         label.grid(row=0, column=0, sticky="w", pady=(10, 2), padx=(10, 2))
         self.settings_path_var = tk.StringVar(value=self.current_settings.get("settings_file_path", ""))
-        entry = ttk.Entry(self.right_frame, textvariable=self.settings_path_var, width=42)
+        entry = ttk.Entry(self.right_frame, textvariable=self.settings_path_var, width=24)
         entry.grid(row=1, column=0, sticky="w", padx=(10, 2), pady=(0, 0))
         browse_btn = ttk.Button(self.right_frame, text="Browse...", command=self._browse_settings_path)
         browse_btn.grid(row=1, column=1, sticky="w", padx=(2, 10), pady=(0, 0))

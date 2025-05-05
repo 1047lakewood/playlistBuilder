@@ -94,6 +94,9 @@ class PlaylistManagerApp(tk.Frame):
         # --- Protocol Handlers ---
         if master is not None:
             self.master.protocol("WM_DELETE_WINDOW", self.quit_app)
+            # Bind Ctrl+S at the root window to save the current playlist tab
+            self.master.bind_all('<Control-s>', self._on_ctrl_s_global)
+            self.master.bind_all('<Control-S>', self._on_ctrl_s_global)
 
         # --- Pygame Mixer Init ---
         self._auto_init_audio()
@@ -1048,3 +1051,7 @@ class PlaylistManagerApp(tk.Frame):
             self.save_settings()
             self.set_status("Settings saved.")
         SettingsDialog(self.master, self.current_settings.copy(), save_settings_callback)
+
+    def _on_ctrl_s_global(self, event=None):
+        self.save_current_playlist()
+        return "break"

@@ -188,9 +188,6 @@ class PlaylistTab(ttk.Frame):
         self._path_tooltip_label = None
         self.tree.bind('<Motion>', self._on_tree_motion)
         self.tree.bind('<Leave>', self._on_tree_leave)
-        # --- Ctrl+S Save Shortcut ---
-        self.bind_all('<Control-s>', self._on_ctrl_s)
-        self.bind_all('<Control-S>', self._on_ctrl_s)
 
     def ensure_indicator_column(self, columns):
         cols = list(columns)
@@ -1322,10 +1319,6 @@ class PlaylistTab(ttk.Frame):
 
     def _on_tree_leave(self, event):
         self._hide_path_tooltip()
-
-    def _on_ctrl_s(self, event=None):
-        self.save_playlist()
-        return "break"
 
     def _on_column_resize(self, event=None):
         # Save column widths after user resizes
