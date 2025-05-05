@@ -25,7 +25,6 @@ def load_audio_metadata(filepath):
         'exists': os.path.exists(filepath)
     }
     if not metadata['exists']:
-        print(f"[METADATA][DEBUG] File does not exist: {filepath}")
         return metadata
 
     try:
@@ -35,7 +34,6 @@ def load_audio_metadata(filepath):
         except Exception as e:
             print(f"[METADATA][ERROR] Exception in MutagenFile (easy=True): {filepath}\n{e}")
             metadata['format'] = f"Invalid/Corrupt ({type(e).__name__})"
-            print(f"[METADATA][DEBUG] Metadata after error: {metadata}")
             return metadata
         if audio:
             try:
@@ -53,7 +51,6 @@ def load_audio_metadata(filepath):
             except Exception as e:
                 print(f"[METADATA][ERROR] Exception reading tags/info: {filepath}\n{e}")
                 metadata['format'] = f"TagReadError ({type(e).__name__})"
-                print(f"[METADATA][DEBUG] Metadata after tag read error: {metadata}")
                 return metadata
         else:
             try:
@@ -69,14 +66,12 @@ def load_audio_metadata(filepath):
                     except Exception as e:
                         print(f"[METADATA][ERROR] Exception reading info (no easy): {filepath}\n{e}")
                         metadata['format'] = f"TagReadErrorNoEasy ({type(e).__name__})"
-                        print(f"[METADATA][DEBUG] Metadata after no easy tag read error: {metadata}")
                         return metadata
                 else:
                     metadata['format'] = f"Unknown/Unsupported ({os.path.splitext(filepath)[1]})"
             except Exception as e:
                 print(f"[METADATA][ERROR] Exception in MutagenFile (no easy): {filepath}\n{e}")
                 metadata['format'] = f"Invalid/CorruptNoEasy ({type(e).__name__})"
-                print(f"[METADATA][DEBUG] Metadata after MutagenFile no easy error: {metadata}")
                 return metadata
         if metadata['duration'] is None:
             pass
@@ -86,7 +81,6 @@ def load_audio_metadata(filepath):
         print(f"[METADATA][ERROR] Could not load audio file with mutagen (unsupported format or corrupt?): {filepath}\n{e}")
         traceback.print_exc()
         metadata['format'] = f"Error reading ({type(e).__name__})"
-    print(f"[METADATA][DEBUG] Final loaded metadata for {filepath}: {metadata}")
     return metadata
 
 def save_audio_metadata(filepath, new_metadata):

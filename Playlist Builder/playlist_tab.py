@@ -5,7 +5,7 @@ from metadata_utils import load_audio_metadata
 from utils import (M3U_ENCODING, format_duration)
 import logging # Add logging import
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox, simpledialog  # Ensure dialogs are imported
 
 # --- Add indicator column for artist directory match ---
 INDICATOR_COLUMN = 'Intro'
@@ -14,15 +14,18 @@ CUSTOM_COLUMNS = ['#', INDICATOR_COLUMN, 'Artist', 'Title', 'Duration', 'Path', 
 # --- Playlist Tab Class ---
 
 class PlaylistTab(ttk.Frame):
-    def __init__(self, parent_notebook, app_controller, filepath=None, initial_columns=None):
+    def __init__(self, parent_notebook, app_controller, filepath=None, title = None, initial_columns=None):
         super().__init__(parent_notebook)
+        
+        title = os.path.splitext(os.path.basename(filepath))[0] if title is None else title
+        
         self.notebook = parent_notebook
         self.app = app_controller
         self.filepath = filepath
         self.is_dirty = False
         self._track_data = [] # List of dictionaries holding track metadata
         self._iid_map = {} # Maps Treeview iid to index in _track_data for quick lookup
-        self.tab_display_name = os.path.basename(filepath) if filepath else "Untitled Playlist"
+        self.tab_display_name = title
 
         # Use custom columns for display
         self.visible_columns = self.ensure_indicator_column(initial_columns if initial_columns else CUSTOM_COLUMNS)
@@ -708,23 +711,36 @@ class PlaylistTab(ttk.Frame):
             self.mark_dirty()
 
     def context_rename_file_manual(self):
+        logging.info("[context_rename_file_manual] Triggered")
         selected_iids = self.get_selected_item_ids()
-        if not selected_iids: return
+        if not selected_iids:
+            logging.info("[context_rename_file_manual] No selection; returning early.")
+            return
         if len(selected_iids) > 1:
+            logging.info("[context_rename_file_manual] More than one selected; returning early.")
             messagebox.showinfo("Rename File", "Please select only one track to rename.")
             return
         iid = selected_iids[0]
         track_data = self.get_track_data_by_iid(iid)
         if not track_data or not track_data['path']:
+            logging.info("[context_rename_file_manual] No track data or path; returning early.")
             messagebox.showerror("Rename Error", "Cannot rename: Track data or path is missing.")
             return
         old_path = track_data['path']
-        new_path = simpledialog.askstring("Rename File", "Enter the new file path (including extension):", initialvalue=old_path, parent=self)
+        logging.info(f"[context_rename_file_manual] Old path: {old_path}")
+        try:
+            new_path = simpledialog.askstring("Rename File", "Enter the new file path (including extension):", initialvalue=old_path, parent=self)
+        except Exception as e:
+            logging.error(f"[context_rename_file_manual] Exception in askstring: {e}")
+            messagebox.showerror("Rename Error", f"Dialog failed: {e}")
+            return
         if not new_path or new_path == old_path:
+            logging.info("[context_rename_file_manual] Rename cancelled or unchanged.")
             self.app.set_status("Rename cancelled.")
             return
         invalid_chars = ['/', '\\', ':']
         if any(char in os.path.basename(new_path) for char in invalid_chars):
+            logging.info(f"[context_rename_file_manual] Invalid character in new path: {new_path}")
             messagebox.showerror("Rename Error", "New filename cannot contain path separators or invalid characters.")
             return
         try:
@@ -758,26 +774,41 @@ class PlaylistTab(ttk.Frame):
             self.update_track_display(iid, track_data)
 
     def context_rename_file_browse(self):
+        logging.info("[context_rename_file_browse] Triggered")
         selected_iids = self.get_selected_item_ids()
-        if not selected_iids: return
+        if not selected_iids:
+            logging.info("[context_rename_file_browse] No selection; returning early.")
+            return
         if len(selected_iids) > 1:
+            logging.info("[context_rename_file_browse] More than one selected; returning early.")
             messagebox.showinfo("Rename File", "Please select only one track to rename.")
             return
         iid = selected_iids[0]
         track_data = self.get_track_data_by_iid(iid)
         if not track_data or not track_data['path']:
+            logging.info("[context_rename_file_browse] No track data or path; returning early.")
             messagebox.showerror("Rename Error", "Cannot rename: Track data or path is missing.")
             return
         old_path = track_data['path']
         directory = os.path.dirname(old_path)
         initialfile = os.path.basename(old_path)
-        new_path = filedialog.askopenfilename(initialdir=directory, initialfile=initialfile, title="Select New File Path", parent=self)
-        if not new_path or new_path == old_path:
-            self.app.set_status("Rename cancelled.")
+        logging.info(f"[context_rename_file_browse] Old path: {old_path} | Directory: {directory}")
+        try:
+            from tkinter import filedialog
+            new_path = filedialog.askopenfilename(
+                title="Rename File",
+                initialdir=directory,
+                initialfile=initialfile,
+                filetypes=[("Audio Files", "*.mp3 *.wav *.flac *.ogg *.m4a *.aac"), ("All Files", "*.*")],
+                parent=self
+            )
+        except Exception as e:
+            logging.error(f"[context_rename_file_browse] Exception in askopenfilename: {e}")
+            messagebox.showerror("Rename Error", f"Dialog failed: {e}")
             return
-        invalid_chars = ['/', '\\', ':']
-        if any(char in os.path.basename(new_path) for char in invalid_chars):
-            messagebox.showerror("Rename Error", "New filename cannot contain path separators or invalid characters.")
+        if not new_path or new_path == old_path:
+            logging.info("[context_rename_file_browse] Rename cancelled or unchanged.")
+            self.app.set_status("Rename cancelled.")
             return
         try:
             if track_data['exists']:
@@ -993,7 +1024,7 @@ class PlaylistTab(ttk.Frame):
     def setup_columns(self):
         """Sets up the Treeview columns based on CUSTOM_COLUMNS."""
         col_widths = {'#': 40, INDICATOR_COLUMN: 18, 'Artist': 150, 'Title': 250, 'Album': 150, 'Genre': 100, 'TrackNumber': 40, 'Duration': 60, 'Path': 300, 'Exists': 50, 'Bitrate':60, 'Format': 60}
-        col_anchors = {'#': 'e', INDICATOR_COLUMN: 'center', 'TrackNumber': 'e', 'Duration': 'e', 'Exists': 'center', 'Bitrate':'e'}
+        col_anchors = {'#': 'e', INDICATOR_COLUMN: 'center', 'TrackNumber': 'e', 'Duration': 'center', 'Exists': 'center', 'Bitrate':'e'}
         saved_widths = getattr(self.app, 'get_column_widths', lambda: None)() or {}
         for col in CUSTOM_COLUMNS:
             width = saved_widths.get(col, col_widths.get(col, 100))

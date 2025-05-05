@@ -156,8 +156,9 @@ class PlaylistManagerApp(tk.Frame):
                     success = current_tab.load_playlist_from_file(path)
                     if success:
                         current_tab.filepath = path
-                        current_tab.tab_display_name = os.path.basename(path)
-                        current_tab.update_tab_title()
+                        current_tab.tab_display_name = os.path.splitext(os.path.basename(path))[0]
+                        print("here")
+                        current_tab.update_tab_title() 
                         loaded_count += 1
                     else:
                         messagebox.showerror("Load Error", f"Failed to load playlist:\n{path}\nSee console for details.")
@@ -165,7 +166,7 @@ class PlaylistManagerApp(tk.Frame):
                         current_tab.update_tab_title()
                     continue
                 # Add new tab and load
-                tab_title = os.path.basename(path)
+                tab_title = os.path.splitext(os.path.basename(path))[0]
                 new_tab = self.add_new_tab(title=tab_title, filepath=path)
                 success = new_tab.load_playlist_from_file(path)
                 if success:
