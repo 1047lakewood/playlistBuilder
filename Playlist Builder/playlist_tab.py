@@ -420,7 +420,9 @@ class PlaylistTab(ttk.Frame):
                     if name.startswith(artist_base):
                         indicator = '•'
                         break
-             values = [self.get_formatted_value(track_info, col) for col in CUSTOM_COLUMNS]
+             # Correctly align values with columns: [row number, indicator, ...]
+             row_number = len(self._track_data)  # 1-based index for new row
+             values = [row_number, indicator] + [self.get_formatted_value(track_info, col) for col in CUSTOM_COLUMNS if col not in ['#', INDICATOR_COLUMN]]
              tag = "missing" if not track_info.get('exists', True) else "found"
              iid = self.tree.insert("", tk.END, values=values, tags=(tag,))
              self._iid_map[iid] = track_info

@@ -1,6 +1,7 @@
 {
   "columns": [
     "#",
+    "Intro",
     "Artist",
     "Title",
     "Duration",
@@ -11,12 +12,13 @@
     "a": {
       "tabs_info": [
         {
-          "filepath": "G:/Playlists/Erev playlists/Main playlist Pesach Chol Hamoed 5785.m3u8",
-          "display_name": "Main playlist Pesach Chol Hamoed 5785.m3u8"
+          "filepath": "G:/Playlists/Erev playlists/Main playlist Breishis shavua 5785.m3u8",
+          "display_name": "Main playlist Breishis shavua 5785.m3u8"
         }
       ],
       "columns": [
         "#",
+        "Intro",
         "Artist",
         "Title",
         "Duration",
@@ -25,12 +27,10 @@
       ]
     }
   },
-  "last_profile": null,
+  "last_profile": "a",
   "audio_device": null,
   "open_tabs": [
-    "G:/Playlists/Erev playlists/Main playlist Pesach Chol Hamoed 5785.m3u8",
-    null,
-    "G:/Playlists/Erev playlists/Main playlist Chayei sara 5784 shavua.m3u8"
+    "G:/Playlists/Erev playlists/Main playlist Breishis shavua 5785.m3u8"
   ],
   "artist_directory": "G:/Shiurim/IntrosCleanedUp"
 }

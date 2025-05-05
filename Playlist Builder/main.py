@@ -1,9 +1,5 @@
 
 import sys
-
-from metadata_utils import load_audio_metadata, save_audio_metadata
-from utils import (APP_NAME, SETTINGS_FILE, DEFAULT_COLUMNS, AVAILABLE_COLUMNS, 
-                             M3U_ENCODING, format_duration)
 import tkinterdnd2 as tkdnd
 import logging # Add logging import
 

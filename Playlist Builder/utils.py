@@ -10,8 +10,8 @@ from ctypes import windll
 # --- Constants ---
 APP_NAME = "Multi-Playlist Editor"
 SETTINGS_FILE = "playlist_editor_settings.json"
-DEFAULT_COLUMNS = ['#', 'Artist', 'Title', 'Duration', 'Path', 'Exists']
-AVAILABLE_COLUMNS = ['#', 'Artist', 'Title', 'Album', 'Genre', 'TrackNumber', 'Duration', 'Path', 'Exists', 'Bitrate', 'Format']
+DEFAULT_COLUMNS = ['#', 'Intro', 'Artist', 'Title', 'Duration', 'Path', 'Exists']
+AVAILABLE_COLUMNS = ['#', 'Intro', 'Artist', 'Title', 'Album', 'Genre', 'TrackNumber', 'Duration', 'Path', 'Exists', 'Bitrate', 'Format']
 M3U_ENCODING = 'utf-8'  # Use M3U8 standard
 
 # --- Helper Functions ---
