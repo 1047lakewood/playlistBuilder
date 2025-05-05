@@ -163,11 +163,14 @@ class PlaylistTab(ttk.Frame):
         self.context_menu.add_command(label="Move Audacity Macro Output Here", command=self.context_move_macro_output)
 
         # Enable drag-and-drop for reordering playlist tracks in the treeview
-        self.tree.bind('<ButtonPress-1>', self._on_tree_press)
-        self.tree.bind('<B1-Motion>', self._on_tree_drag)
-        self.tree.bind('<ButtonRelease-1>', self._on_tree_release)
+        # --- Drag-and-drop row reordering (internal only) ---
+        self.tree.bind('<ButtonPress-1>', self._on_tree_drag_start, add='+')
+        self.tree.bind('<B1-Motion>', self._on_tree_drag_motion, add='+')
+        self.tree.bind('<ButtonRelease-1>', self._on_tree_release, add='+')
         self._dragged_iid = None
         self._dragged_index = None
+        self._drag_dragged_iids = None
+        self._drag_last_target = None
 
         # Enable drag-and-drop from other programs (files)
         self._dnd_enabled = False
@@ -1170,36 +1173,66 @@ class PlaylistTab(ttk.Frame):
                 self.tree.see(all_children[new_idx])
         return "break"
 
-    def _on_tree_press(self, event):
-        # Only start drag if plain left-click (no shift/ctrl modifiers)
-        if (event.state & 0x0001) or (event.state & 0x0004):  # Shift or Control pressed
-            # Let default selection logic handle shift/ctrl multi-select
+  
+    def _on_tree_drag_start(self, event):
+        # Only start drag if mouse is on a row, and not on header
+        region = self.tree.identify('region', event.x, event.y)
+        if region != 'cell':
             self._dragged_iid = None
-            self._dragged_index = None
+            self._drag_dragged_iids = None
             return
         iid = self.tree.identify_row(event.y)
-        if iid:
-            # If the row is not selected, select it (and only it)
-            if iid not in self.tree.selection():
-                self.tree.selection_set(iid)
-            self._dragged_iid = iid
-            self._dragged_index = self.tree.index(iid)
-        else:
+        if not iid:
             self._dragged_iid = None
-            self._dragged_index = None
-
-    def _on_tree_drag(self, event):
-        if self._dragged_iid is None:
+            self._drag_dragged_iids = None
             return
-        y = event.y
-        target_iid = self.tree.identify_row(y)
-        if target_iid and target_iid != self._dragged_iid:
-            target_index = self.tree.index(target_iid)
-            self.tree.move(self._dragged_iid, '', target_index)
-            # Only update visuals during drag; update data on release
+        # Only start drag if left mouse button and not ctrl/shift held (to not interfere with selection)
+        if event.state & 0x0001 or event.state & 0x0004:  # Shift or Control
+            self._dragged_iid = None
+            self._drag_dragged_iids = None
+            return
+        self._dragged_iid = iid
+        # Support dragging multiple selected rows if the clicked row is selected
+        selection = set(self.tree.selection())
+        if iid in selection:
+            self._drag_dragged_iids = [iid for iid in self.tree.selection()]
+        else:
+            self._drag_dragged_iids = [iid]
+        self._drag_last_target = None
+        logging.info(f"[DND] Drag start: {self._drag_dragged_iids}")
+
+    def _on_tree_drag_motion(self, event):
+        if not self._dragged_iid or not self._drag_dragged_iids:
+            return
+        # Identify target row
+        target_iid = self.tree.identify_row(event.y)
+        if not target_iid or target_iid in self._drag_dragged_iids:
+            return
+        # Only move if target changes
+        if self._drag_last_target == target_iid:
+            return
+        self._drag_last_target = target_iid
+        # Find index to move to
+        target_index = self.tree.index(target_iid)
+        # Move all dragged iids above/below target (preserve order)
+        # Remove from tree and re-insert
+        all_iids = list(self.tree.get_children(''))
+        # Remove dragged iids from all_iids
+        for iid in self._drag_dragged_iids:
+            if iid in all_iids:
+                all_iids.remove(iid)
+        # Insert at target_index
+        insert_at = target_index
+        for i, iid in enumerate(self._drag_dragged_iids):
+            all_iids.insert(insert_at + i, iid)
+        # Repack tree
+        for idx, iid in enumerate(all_iids):
+            self.tree.move(iid, '', idx)
+        logging.info(f"[DND] Dragged {self._drag_dragged_iids} to index {target_index}")
 
     def _on_tree_release(self, event):
-        if self._dragged_iid is not None:
+        # Only handle drop if drag was started
+        if self._dragged_iid is not None and self._drag_dragged_iids:
             # On release, update _track_data to match the new Treeview order
             new_order = []
             iid_to_track = self._iid_map.copy()
@@ -1220,6 +1253,8 @@ class PlaylistTab(ttk.Frame):
             self.mark_dirty()
         self._dragged_iid = None
         self._dragged_index = None
+        self._drag_dragged_iids = None
+        self._drag_last_target = None
 
     def _on_external_drop(self, event):
         root = self.winfo_toplevel()

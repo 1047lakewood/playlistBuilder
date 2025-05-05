@@ -1,75 +1,115 @@
-2025-05-05 16:15:07,519 - root - INFO - Application starting...
-2025-05-05 16:15:07,761 - root - INFO - setup_menu_bar called. Stub implementation.
-2025-05-05 16:15:07,830 - playlist_manager_app - INFO - Attempting to load profile: tests (startup=True)
-2025-05-05 16:15:07,830 - playlist_manager_app - INFO - Found profile 'tests'. Proceeding with load.
-2025-05-05 16:15:07,830 - playlist_manager_app - INFO - Closing existing tabs before loading profile tabs.
-2025-05-05 16:15:07,831 - playlist_manager_app - INFO - Loading 5 tabs specified in profile 'tests'.
-2025-05-05 16:15:07,832 - playlist_manager_app - INFO - Processing tab 1/5: filepath='G:/Playlists/Erev playlists/Main playlist Achrei mos Kdoshim shavua sfira 5785.m3u8', display_name='Main playlist'
-2025-05-05 16:15:07,835 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/Main playlist Achrei mos Kdoshim shavua sfira 5785.m3u8
-2025-05-05 16:15:08,743 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/Main playlist Achrei mos Kdoshim shavua sfira 5785.m3u8': True
-2025-05-05 16:15:08,744 - playlist_manager_app - INFO - Processing tab 2/5: filepath='G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS playedAM.m3u8', display_name='SFRIRA-SHAVUOS played AM'
-2025-05-05 16:15:08,748 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS playedAM.m3u8
-2025-05-05 16:15:09,233 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS playedAM.m3u8': True
-2025-05-05 16:15:09,234 - playlist_manager_app - INFO - Processing tab 3/5: filepath='G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS ALL AM.m3u8', display_name='SFRIRA-SHAVUOS ALL AM'
-2025-05-05 16:15:09,239 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS ALL AM.m3u8
-2025-05-05 16:15:15,291 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS ALL AM.m3u8': True
-2025-05-05 16:15:15,291 - playlist_manager_app - INFO - Processing tab 4/5: filepath='G:/Playlists/Erev playlists/Shmini achrei Pesach shavua sfira 5785.m3u8', display_name='Shmini'
-2025-05-05 16:15:15,296 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/Shmini achrei Pesach shavua sfira 5785.m3u8
-2025-05-05 16:15:16,020 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/Shmini achrei Pesach shavua sfira 5785.m3u8': True
-2025-05-05 16:15:16,020 - playlist_manager_app - INFO - Processing tab 5/5: filepath='G:/Playlists/Erev playlists/Tazria Mitsora achrei Pesach shavua sfira 5785.m3u8', display_name='Tazria Mitsora'
-2025-05-05 16:15:16,025 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/Tazria Mitsora achrei Pesach shavua sfira 5785.m3u8
-2025-05-05 16:15:16,647 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/Tazria Mitsora achrei Pesach shavua sfira 5785.m3u8': True
-2025-05-05 16:15:16,647 - persistence - INFO - Settings saved to 'C:\Users\Admin\AppData\Roaming\playlistBuilder\playlist_editor_settings.json'.
-2025-05-05 16:15:16,647 - playlist_manager_app - INFO - Applying column settings to all tabs: ['#', 'Intro', 'Artist', 'Title', 'Duration', 'Path', 'Exists']
-2025-05-05 16:15:16,648 - playlist_manager_app - INFO - Profile 'tests' loading complete.
-2025-05-05 16:15:21,961 - persistence - INFO - Profile 'tests' saved in settings.
-2025-05-05 16:15:21,962 - persistence - INFO - Settings saved to 'C:\Users\Admin\AppData\Roaming\playlistBuilder\playlist_editor_settings.json'.
-2025-05-05 16:15:31,012 - playlist_manager_app - INFO - Attempting to load profile: tests (startup=False)
-2025-05-05 16:15:31,013 - playlist_manager_app - INFO - Found profile 'tests'. Proceeding with load.
-2025-05-05 16:15:31,013 - playlist_manager_app - INFO - Closing existing tabs before loading profile tabs.
-2025-05-05 16:15:31,014 - playlist_manager_app - INFO - Loading 5 tabs specified in profile 'tests'.
-2025-05-05 16:15:31,015 - playlist_manager_app - INFO - Processing tab 1/5: filepath='G:/Playlists/Erev playlists/Main playlist Achrei mos Kdoshim shavua sfira 5785.m3u8', display_name='Main playlist'
-2025-05-05 16:15:31,022 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/Main playlist Achrei mos Kdoshim shavua sfira 5785.m3u8
-2025-05-05 16:15:31,888 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/Main playlist Achrei mos Kdoshim shavua sfira 5785.m3u8': True
-2025-05-05 16:15:31,888 - playlist_manager_app - INFO - Processing tab 2/5: filepath='G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS playedAM.m3u8', display_name='SFRIRA-SHAVUOS played AM'
-2025-05-05 16:15:31,894 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS playedAM.m3u8
-2025-05-05 16:15:32,342 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS playedAM.m3u8': True
-2025-05-05 16:15:32,342 - playlist_manager_app - INFO - Processing tab 3/5: filepath='G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS ALL AM.m3u8', display_name='SFRIRA-SHAVUOS ALL AM'
-2025-05-05 16:15:32,348 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS ALL AM.m3u8
-2025-05-05 16:15:38,141 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS ALL AM.m3u8': True
-2025-05-05 16:15:38,141 - playlist_manager_app - INFO - Processing tab 4/5: filepath='G:/Playlists/Erev playlists/Shmini achrei Pesach shavua sfira 5785.m3u8', display_name='Shmini'
-2025-05-05 16:15:38,147 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/Shmini achrei Pesach shavua sfira 5785.m3u8
-2025-05-05 16:15:38,809 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/Shmini achrei Pesach shavua sfira 5785.m3u8': True
-2025-05-05 16:15:38,809 - playlist_manager_app - INFO - Processing tab 5/5: filepath='G:/Playlists/Erev playlists/Tazria Mitsora achrei Pesach shavua sfira 5785.m3u8', display_name='Tazria Mitsora'
-2025-05-05 16:15:38,814 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/Tazria Mitsora achrei Pesach shavua sfira 5785.m3u8
-2025-05-05 16:15:39,427 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/Tazria Mitsora achrei Pesach shavua sfira 5785.m3u8': True
-2025-05-05 16:15:39,429 - persistence - INFO - Settings saved to 'C:\Users\Admin\AppData\Roaming\playlistBuilder\playlist_editor_settings.json'.
-2025-05-05 16:15:39,430 - playlist_manager_app - INFO - Applying column settings to all tabs: ['#', 'Intro', 'Artist', 'Title', 'Duration', 'Path', 'Exists']
-2025-05-05 16:15:39,430 - playlist_manager_app - INFO - Profile 'tests' loading complete.
-2025-05-05 16:15:49,336 - persistence - INFO - Profile 'tests' deleted.
-2025-05-05 16:15:49,338 - persistence - INFO - Settings saved to 'C:\Users\Admin\AppData\Roaming\playlistBuilder\playlist_editor_settings.json'.
-2025-05-05 16:15:59,168 - persistence - INFO - Profile 'test' saved in settings.
-2025-05-05 16:15:59,170 - persistence - INFO - Settings saved to 'C:\Users\Admin\AppData\Roaming\playlistBuilder\playlist_editor_settings.json'.
-2025-05-05 16:16:04,193 - playlist_manager_app - INFO - Attempting to load profile: test (startup=False)
-2025-05-05 16:16:04,194 - playlist_manager_app - INFO - Found profile 'test'. Proceeding with load.
-2025-05-05 16:16:04,194 - playlist_manager_app - INFO - Closing existing tabs before loading profile tabs.
-2025-05-05 16:16:04,196 - playlist_manager_app - INFO - Loading 5 tabs specified in profile 'test'.
-2025-05-05 16:16:04,196 - playlist_manager_app - INFO - Processing tab 1/5: filepath='G:/Playlists/Erev playlists/Main playlist Achrei mos Kdoshim shavua sfira 5785.m3u8', display_name='Main playlist'
-2025-05-05 16:16:04,201 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/Main playlist Achrei mos Kdoshim shavua sfira 5785.m3u8
-2025-05-05 16:16:05,081 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/Main playlist Achrei mos Kdoshim shavua sfira 5785.m3u8': True
-2025-05-05 16:16:05,081 - playlist_manager_app - INFO - Processing tab 2/5: filepath='G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS playedAM.m3u8', display_name='SFRIRA-SHAVUOS played AM'
-2025-05-05 16:16:05,086 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS playedAM.m3u8
-2025-05-05 16:16:05,503 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS playedAM.m3u8': True
-2025-05-05 16:16:05,503 - playlist_manager_app - INFO - Processing tab 3/5: filepath='G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS ALL AM.m3u8', display_name='SFRIRA-SHAVUOS ALL AM'
-2025-05-05 16:16:05,508 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS ALL AM.m3u8
-2025-05-05 16:16:11,377 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS ALL AM.m3u8': True
-2025-05-05 16:16:11,379 - playlist_manager_app - INFO - Processing tab 4/5: filepath='G:/Playlists/Erev playlists/Shmini achrei Pesach shavua sfira 5785.m3u8', display_name='Shmini'
-2025-05-05 16:16:11,384 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/Shmini achrei Pesach shavua sfira 5785.m3u8
-2025-05-05 16:16:12,129 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/Shmini achrei Pesach shavua sfira 5785.m3u8': True
-2025-05-05 16:16:12,129 - playlist_manager_app - INFO - Processing tab 5/5: filepath='G:/Playlists/Erev playlists/Tazria Mitsora achrei Pesach shavua sfira 5785.m3u8', display_name='Tazria Mitsora'
-2025-05-05 16:16:12,135 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/Tazria Mitsora achrei Pesach shavua sfira 5785.m3u8
-2025-05-05 16:16:12,782 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/Tazria Mitsora achrei Pesach shavua sfira 5785.m3u8': True
-2025-05-05 16:16:12,784 - persistence - INFO - Settings saved to 'C:\Users\Admin\AppData\Roaming\playlistBuilder\playlist_editor_settings.json'.
-2025-05-05 16:16:12,784 - playlist_manager_app - INFO - Applying column settings to all tabs: ['#', 'Intro', 'Artist', 'Title', 'Duration', 'Path', 'Exists']
-2025-05-05 16:16:12,784 - playlist_manager_app - INFO - Profile 'test' loading complete.
-2025-05-05 16:16:16,774 - persistence - INFO - Settings saved to 'C:\Users\Admin\AppData\Roaming\playlistBuilder\playlist_editor_settings.json'.
+2025-05-05 19:10:44,870 - root - INFO - Application starting...
+2025-05-05 19:10:45,144 - root - INFO - setup_menu_bar called. Stub implementation.
+2025-05-05 19:10:45,220 - playlist_manager_app - INFO - Attempting to load profile: test (startup=True)
+2025-05-05 19:10:45,221 - playlist_manager_app - INFO - Found profile 'test'. Proceeding with load.
+2025-05-05 19:10:45,221 - playlist_manager_app - INFO - Closing existing tabs before loading profile tabs.
+2025-05-05 19:10:45,221 - playlist_manager_app - INFO - Loading 5 tabs specified in profile 'test'.
+2025-05-05 19:10:45,221 - playlist_manager_app - INFO - Processing tab 1/5: filepath='G:/Playlists/Erev playlists/Main playlist Achrei mos Kdoshim shavua sfira 5785.m3u8', display_name='Main playlist'
+2025-05-05 19:10:45,225 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/Main playlist Achrei mos Kdoshim shavua sfira 5785.m3u8
+2025-05-05 19:10:46,321 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/Main playlist Achrei mos Kdoshim shavua sfira 5785.m3u8': True
+2025-05-05 19:10:46,321 - playlist_manager_app - INFO - Processing tab 2/5: filepath='G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS playedAM.m3u8', display_name='SFRIRA-SHAVUOS played AM'
+2025-05-05 19:10:46,327 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS playedAM.m3u8
+2025-05-05 19:10:46,819 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS playedAM.m3u8': True
+2025-05-05 19:10:46,819 - playlist_manager_app - INFO - Processing tab 3/5: filepath='G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS ALL AM.m3u8', display_name='SFRIRA-SHAVUOS ALL AM'
+2025-05-05 19:10:46,822 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS ALL AM.m3u8
+2025-05-05 19:10:53,114 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS ALL AM.m3u8': True
+2025-05-05 19:10:53,115 - playlist_manager_app - INFO - Processing tab 4/5: filepath='G:/Playlists/Erev playlists/Shmini achrei Pesach shavua sfira 5785.m3u8', display_name='Shmini'
+2025-05-05 19:10:53,119 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/Shmini achrei Pesach shavua sfira 5785.m3u8
+2025-05-05 19:10:53,857 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/Shmini achrei Pesach shavua sfira 5785.m3u8': True
+2025-05-05 19:10:53,857 - playlist_manager_app - INFO - Processing tab 5/5: filepath='G:/Playlists/Erev playlists/Tazria Mitsora achrei Pesach shavua sfira 5785.m3u8', display_name='Tazria Mitsora'
+2025-05-05 19:10:53,862 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/Tazria Mitsora achrei Pesach shavua sfira 5785.m3u8
+2025-05-05 19:10:54,496 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/Tazria Mitsora achrei Pesach shavua sfira 5785.m3u8': True
+2025-05-05 19:10:54,496 - persistence - INFO - Settings saved to 'C:\Users\Admin\AppData\Roaming\playlistBuilder\playlist_editor_settings.json'.
+2025-05-05 19:10:54,497 - playlist_manager_app - INFO - Applying column settings to all tabs: ['#', 'Intro', 'Artist', 'Title', 'Duration', 'Path', 'Exists']
+2025-05-05 19:10:54,497 - playlist_manager_app - INFO - Profile 'test' loading complete.
+2025-05-05 19:10:57,931 - root - INFO - [DND] Drag start: ['I00B']
+2025-05-05 19:10:57,982 - persistence - INFO - Settings saved to 'C:\Users\Admin\AppData\Roaming\playlistBuilder\playlist_editor_settings.json'.
+2025-05-05 19:10:58,547 - root - INFO - [DND] Drag start: ['I19B']
+2025-05-05 19:10:58,829 - root - INFO - [DND] Dragged ['I19B'] to index 11
+2025-05-05 19:10:59,046 - root - INFO - [DND] Dragged ['I19B'] to index 12
+2025-05-05 19:11:00,538 - root - INFO - [DND] Dragged ['I19B'] to index 10
+2025-05-05 19:11:00,915 - root - INFO - [DND] Dragged ['I19B'] to index 9
+2025-05-05 19:11:01,102 - root - INFO - [DND] Dragged ['I19B'] to index 8
+2025-05-05 19:11:02,586 - root - INFO - [DND] Dragged ['I19B'] to index 10
+2025-05-05 19:11:06,029 - root - INFO - [DND] Drag start: ['I328']
+2025-05-05 19:11:08,318 - root - INFO - [DND] Drag start: ['I4B8']
+2025-05-05 19:11:08,886 - root - INFO - [DND] Drag start: ['I647']
+2025-05-05 19:11:11,489 - root - INFO - [DND] Drag start: ['I7E0']
+2025-05-05 19:11:14,320 - root - INFO - [DND] Drag start: ['I972']
+2025-05-05 19:11:16,238 - root - INFO - [DND] Drag start: ['IAFB']
+2025-05-05 19:11:19,347 - root - INFO - [DND] Drag start: ['IC89']
+2025-05-05 19:11:26,556 - root - INFO - [DND] Drag start: ['IE19']
+2025-05-05 19:11:29,699 - root - INFO - [DND] Drag start: ['IFA7', 'IFA8', 'IFA9', 'IFAA', 'IFAB', 'IFAC', 'IFAD', 'IFAE', 'IFAF', 'IFB0']
+2025-05-05 19:11:32,375 - root - INFO - [DND] Drag start: ['I1140']
+2025-05-05 19:11:32,534 - root - INFO - [DND] Dragged ['I1140'] to index 14
+2025-05-05 19:11:36,540 - root - INFO - [DND] Drag start: ['I12CD']
+2025-05-05 19:11:41,039 - root - INFO - [DND] Drag start: ['I15E1']
+2025-05-05 19:11:42,244 - root - INFO - [DND] Drag start: ['I15F6']
+2025-05-05 19:11:43,467 - root - INFO - [DND] Drag start: ['I1790']
+2025-05-05 19:11:43,610 - root - INFO - [DND] Dragged ['I1790'] to index 12
+2025-05-05 19:11:43,628 - root - INFO - [DND] Dragged ['I1790'] to index 13
+2025-05-05 19:11:43,678 - root - INFO - [DND] Dragged ['I1790'] to index 14
+2025-05-05 19:11:43,734 - root - INFO - [DND] Dragged ['I1790'] to index 15
+2025-05-05 19:11:43,874 - root - INFO - [DND] Dragged ['I1790'] to index 16
+2025-05-05 19:11:44,217 - root - INFO - [DND] Dragged ['I1790'] to index 14
+2025-05-05 19:11:44,282 - root - INFO - [DND] Dragged ['I1790'] to index 13
+2025-05-05 19:11:44,296 - root - INFO - [DND] Dragged ['I1790'] to index 12
+2025-05-05 19:11:44,351 - root - INFO - [DND] Dragged ['I1790'] to index 11
+2025-05-05 19:11:44,365 - root - INFO - [DND] Dragged ['I1790'] to index 10
+2025-05-05 19:11:44,416 - root - INFO - [DND] Dragged ['I1790'] to index 9
+2025-05-05 19:11:44,493 - root - INFO - [DND] Dragged ['I1790'] to index 8
+2025-05-05 19:11:45,410 - root - INFO - [DND] Drag start: ['I192F']
+2025-05-05 19:11:45,480 - root - INFO - [DND] Dragged ['I192F'] to index 15
+2025-05-05 19:11:45,495 - root - INFO - [DND] Dragged ['I192F'] to index 14
+2025-05-05 19:11:45,548 - root - INFO - [DND] Dragged ['I192F'] to index 13
+2025-05-05 19:11:45,564 - root - INFO - [DND] Dragged ['I192F'] to index 12
+2025-05-05 19:11:45,625 - root - INFO - [DND] Dragged ['I192F'] to index 11
+2025-05-05 19:11:45,697 - root - INFO - [DND] Dragged ['I192F'] to index 10
+2025-05-05 19:11:45,771 - root - INFO - [DND] Dragged ['I192F'] to index 9
+2025-05-05 19:11:46,460 - root - INFO - [DND] Drag start: ['I1ACB']
+2025-05-05 19:11:46,526 - root - INFO - [DND] Dragged ['I1ACB'] to index 17
+2025-05-05 19:11:46,541 - root - INFO - [DND] Dragged ['I1ACB'] to index 16
+2025-05-05 19:11:46,596 - root - INFO - [DND] Dragged ['I1ACB'] to index 14
+2025-05-05 19:11:46,611 - root - INFO - [DND] Dragged ['I1ACB'] to index 13
+2025-05-05 19:11:46,654 - root - INFO - [DND] Dragged ['I1ACB'] to index 12
+2025-05-05 19:11:46,672 - root - INFO - [DND] Dragged ['I1ACB'] to index 11
+2025-05-05 19:11:46,806 - root - INFO - [DND] Dragged ['I1ACB'] to index 10
+2025-05-05 19:11:49,090 - root - INFO - [DND] Drag start: ['I1C5F', 'I1C60', 'I1C61', 'I1C62']
+2025-05-05 19:11:49,234 - root - INFO - [DND] Dragged ['I1C5F', 'I1C60', 'I1C61', 'I1C62'] to index 11
+2025-05-05 19:11:49,441 - root - INFO - [DND] Dragged ['I1C5F', 'I1C60', 'I1C61', 'I1C62'] to index 10
+2025-05-05 19:11:50,234 - root - INFO - [DND] Drag start: ['I1DF7']
+2025-05-05 19:11:50,301 - root - INFO - [DND] Dragged ['I1DF7'] to index 11
+2025-05-05 19:11:50,369 - root - INFO - [DND] Dragged ['I1DF7'] to index 12
+2025-05-05 19:11:50,385 - root - INFO - [DND] Dragged ['I1DF7'] to index 13
+2025-05-05 19:11:50,436 - root - INFO - [DND] Dragged ['I1DF7'] to index 14
+2025-05-05 19:11:50,451 - root - INFO - [DND] Dragged ['I1DF7'] to index 16
+2025-05-05 19:11:50,506 - root - INFO - [DND] Dragged ['I1DF7'] to index 17
+2025-05-05 19:11:50,573 - root - INFO - [DND] Dragged ['I1DF7'] to index 18
+2025-05-05 19:11:51,124 - root - INFO - [DND] Drag start: ['I1F9C']
+2025-05-05 19:11:51,266 - root - INFO - [DND] Dragged ['I1F9C'] to index 20
+2025-05-05 19:11:51,287 - root - INFO - [DND] Dragged ['I1F9C'] to index 19
+2025-05-05 19:11:51,331 - root - INFO - [DND] Dragged ['I1F9C'] to index 17
+2025-05-05 19:11:51,346 - root - INFO - [DND] Dragged ['I1F9C'] to index 16
+2025-05-05 19:11:51,402 - root - INFO - [DND] Dragged ['I1F9C'] to index 15
+2025-05-05 19:11:51,420 - root - INFO - [DND] Dragged ['I1F9C'] to index 14
+2025-05-05 19:11:51,467 - root - INFO - [DND] Dragged ['I1F9C'] to index 13
+2025-05-05 19:11:51,609 - root - INFO - [DND] Dragged ['I1F9C'] to index 12
+2025-05-05 19:11:52,402 - root - INFO - [DND] Drag start: ['I2129']
+2025-05-05 19:11:52,424 - root - INFO - [DND] Dragged ['I2129'] to index 9
+2025-05-05 19:11:52,542 - root - INFO - [DND] Dragged ['I2129'] to index 10
+2025-05-05 19:11:52,559 - root - INFO - [DND] Dragged ['I2129'] to index 11
+2025-05-05 19:11:52,608 - root - INFO - [DND] Dragged ['I2129'] to index 13
+2025-05-05 19:11:52,671 - root - INFO - [DND] Dragged ['I2129'] to index 14
+2025-05-05 19:11:52,691 - root - INFO - [DND] Dragged ['I2129'] to index 15
+2025-05-05 19:11:52,736 - root - INFO - [DND] Dragged ['I2129'] to index 16
+2025-05-05 19:11:52,805 - root - INFO - [DND] Dragged ['I2129'] to index 17
+2025-05-05 19:11:52,942 - root - INFO - [DND] Dragged ['I2129'] to index 18
+2025-05-05 19:11:53,011 - root - INFO - [DND] Dragged ['I2129'] to index 19
+2025-05-05 19:11:53,434 - root - INFO - [DND] Dragged ['I2129'] to index 17
+2025-05-05 19:11:53,451 - root - INFO - [DND] Dragged ['I2129'] to index 16
+2025-05-05 19:11:53,502 - root - INFO - [DND] Dragged ['I2129'] to index 15
+2025-05-05 19:11:53,518 - root - INFO - [DND] Dragged ['I2129'] to index 14
+2025-05-05 19:11:53,570 - root - INFO - [DND] Dragged ['I2129'] to index 13
+2025-05-05 19:11:53,584 - root - INFO - [DND] Dragged ['I2129'] to index 12
+2025-05-05 19:11:53,639 - root - INFO - [DND] Dragged ['I2129'] to index 11
+2025-05-05 19:12:06,414 - persistence - INFO - Settings saved to 'C:\Users\Admin\AppData\Roaming\playlistBuilder\playlist_editor_settings.json'.
