@@ -3,9 +3,7 @@ import os
 import sys
 
 import subprocess
-import ctypes
-from ctypes import wintypes
-from ctypes import windll
+import logging
 
 # --- Constants ---
 APP_NAME = "Multi-Playlist Editor"
@@ -32,87 +30,34 @@ def format_duration(seconds):
 
 def open_file_location(filepath):
     """Opens the folder containing the file in the default file explorer, selecting the file if it exists."""
+    logger = logging.getLogger(__name__)
     if not os.path.exists(filepath):
         messagebox.showwarning("File Not Found", f"The file '{filepath}' does not exist.")
         return
 
     directory = os.path.dirname(filepath)
-    filename = os.path.basename(filepath)
-
     try:
         if sys.platform == 'win32':
-            # Windows API method for selecting file
-            def _win_select_file(file_path):
-                # Convert file path to wide string
-                file_path = os.path.normpath(file_path)
-                
-                # Load necessary Windows API functions
-                shell32 = windll.shell32
-                ole32 = windll.ole32
-
-                # Initialize COM library
-                ole32.CoInitialize(None)
-
-                try:
-                    # Parse the display name
-                    pidl = wintypes.PIDL()
-                    sfgao = wintypes.ULONG()
-                    hr = shell32.SHParseDisplayName(
-                        file_path, 
-                        None, 
-                        ctypes.byref(pidl), 
-                        0, 
-                        ctypes.byref(sfgao)
-                    )
-
-                    if hr == 0:  # S_OK
-                        # Get the parent folder
-                        pshf = ctypes.POINTER(ctypes.c_void_p)()
-                        hr = shell32.SHBindToParent(
-                            pidl, 
-                            None, 
-                            ctypes.byref(pshf), 
-                            None
-                        )
-
-                        if hr == 0:  # S_OK
-                            # Open and select the file
-                            shell32.SHOpenFolderAndSelectItems(
-                                pidl, 
-                                0, 
-                                None, 
-                                0
-                            )
-                            return True
-                
-                except Exception as e:
-                    print(f"Windows API file selection failed: {e}")
-                
-                return False
-
-            # Try Windows API method first
-            if _win_select_file(filepath):
-                return
-
-            # Fallback to explorer.exe method if Windows API fails
+            # Use explorer.exe with /select, and proper quoting
             try:
-                subprocess.run(['explorer.exe', '/select,', filepath], check=True)
+                quoted_path = os.path.normpath(filepath)
+                cmd = ["explorer.exe", f'/select,"{quoted_path}"']
+                completed = subprocess.run(" ".join(cmd), shell=True, check=True)
                 return
             except Exception as e:
-                print(f"Explorer file selection failed: {e}")
-                # If all else fails, open the directory
-                os.startfile(directory)
-
+                logger.error(f"Explorer file selection failed: {e}")
+                # As a last resort, open the directory
+                try:
+                    os.startfile(directory)
+                except Exception as e2:
+                    logger.error(f"Failed to open directory as fallback: {e2}")
         elif sys.platform == 'darwin':  # macOS
             subprocess.run(['open', '-R', filepath], check=True)
-
         else:  # Linux and other POSIX
-            # Use xdg-open with file selection for file managers that support it
             try:
                 subprocess.run(['nautilus', '--select', filepath], check=False)
             except Exception:
-                # Fallback to opening directory
                 subprocess.run(['xdg-open', directory], check=True)
-
     except Exception as e:
+        logger.error(f"Could not open file location: {e}")
         messagebox.showerror("Error Opening Location", f"Could not open file location:\n{e}")

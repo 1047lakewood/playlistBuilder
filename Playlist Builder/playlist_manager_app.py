@@ -8,13 +8,21 @@ import json
 import pygame # For prelistening
 import time
 
-from utils import (APP_NAME, SETTINGS_FILE, DEFAULT_COLUMNS, AVAILABLE_COLUMNS, 
+from utils import (APP_NAME, DEFAULT_COLUMNS, AVAILABLE_COLUMNS, 
                              format_duration)
 from playlist_tab import PlaylistTab
 import ui_setup 
 import logging
 logger = logging.getLogger(__name__)
 from dialog_windows import ColumnChooserDialog
+
+def get_default_settings_path():
+    default_dir = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "playlistBuilder")
+    if not os.path.isdir(default_dir):
+        os.makedirs(default_dir, exist_ok=True)
+    return os.path.join(default_dir, "playlist_editor_settings.json")
+
+SETTINGS_FILE = None  # Will be set in __init__
 
 class PlaylistManagerApp(tk.Frame):
     def __init__(self, master=None):
@@ -23,6 +31,8 @@ class PlaylistManagerApp(tk.Frame):
         if master is not None:
             master.title(APP_NAME)
             master.geometry("1600x900")
+        global SETTINGS_FILE
+        
         self.current_settings = {
             "columns": DEFAULT_COLUMNS,
             "profiles": {},
@@ -30,14 +40,39 @@ class PlaylistManagerApp(tk.Frame):
             "audio_device": None, # Placeholder for future device selection
             "open_tabs": []
         }
+        # Try to load settings path from file (if exists)
+        default_settings_path = get_default_settings_path()
+        SETTINGS_FILE = default_settings_path
+        if os.path.exists(default_settings_path):
+            try:
+                with open(default_settings_path, 'r', encoding='utf-8') as f:
+                    s = f.read()
+                    import json
+                    loaded = json.loads(s)
+                    custom_path = loaded.get("settings_file_path")
+                    if custom_path and os.path.isfile(custom_path):
+                        SETTINGS_FILE = custom_path
+            except Exception:
+                pass
         self.load_settings()
-
+        # Defensive: ensure open_tabs is a list, and all entries are valid strings or None
+        if not isinstance(self.current_settings.get('open_tabs'), list):
+            self.current_settings['open_tabs'] = []
+        self.current_settings['open_tabs'] = [fp if isinstance(fp, (str, type(None))) else None for fp in self.current_settings['open_tabs']]
         # --- Data ---
         self.clipboard = [] # Simple list to hold track data dictionaries for copy/paste
-
         
         ui_setup.setup_menu_bar(self)
         ui_setup.setup_ui(self)
+        # Defensive: ensure at least one tab is created with a valid title
+        if not self.current_settings.get('open_tabs'):
+            self.add_new_tab(title="Untitled Playlist")
+        else:
+            for filepath in self.current_settings['open_tabs']:
+                if filepath:
+                    self.add_new_tab(filepath=filepath)
+                else:
+                    self.add_new_tab(title="Untitled Playlist")
 
         # --- Playback State ---
         self.currently_playing_path = None
@@ -157,7 +192,6 @@ class PlaylistManagerApp(tk.Frame):
                     if success:
                         current_tab.filepath = path
                         current_tab.tab_display_name = os.path.splitext(os.path.basename(path))[0]
-                        print("here")
                         current_tab.update_tab_title() 
                         loaded_count += 1
                     else:
@@ -525,7 +559,7 @@ class PlaylistManagerApp(tk.Frame):
                     logger.debug(f"Closing tab with ID: {tab_id}")
                     self.notebook.forget(tab_id)
                 except tk.TclError as e:
-                    logger.warning(f"TclError closing tab {tab_id}: {e} - might already be closed.")
+                    logger.warning(f"TclError closing tab {tab_id}: {e} - Tab might have been destroyed.")
                 except Exception as e:
                     logger.error(f"Unexpected error closing tab {tab_id}: {e}", exc_info=True)
 
@@ -590,7 +624,13 @@ class PlaylistManagerApp(tk.Frame):
     # --- Settings Persistence ---
 
     def save_settings(self):
-        """Saves current settings to SETTINGS_FILE, including open tabs."""
+        global SETTINGS_FILE
+        # Use custom path if set
+        custom_path = self.current_settings.get("settings_file_path")
+        if custom_path:
+            SETTINGS_FILE = custom_path
+        else:
+            SETTINGS_FILE = get_default_settings_path()
         open_tabs = []
         for tab_id in self.notebook.tabs():
             widget = self.nametowidget(tab_id)
@@ -601,13 +641,27 @@ class PlaylistManagerApp(tk.Frame):
         self.current_settings['open_tabs'] = open_tabs
         try:
             with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
+                import json
                 json.dump(self.current_settings, f, indent=2)
             print(f"[SETTINGS] Saved to {SETTINGS_FILE}")
         except Exception as e:
             print(f"[ERROR] Saving settings: {e}")
 
     def load_settings(self):
-        """Loads settings from SETTINGS_FILE, including open tabs."""
+        global SETTINGS_FILE
+        # Try to use custom path from default file
+        default_settings_path = get_default_settings_path()
+        SETTINGS_FILE = default_settings_path
+        if os.path.exists(default_settings_path):
+            try:
+                with open(default_settings_path, 'r', encoding='utf-8') as f:
+                    import json
+                    loaded = json.load(f)
+                    custom_path = loaded.get("settings_file_path")
+                    if custom_path and os.path.isfile(custom_path):
+                        SETTINGS_FILE = custom_path
+            except Exception:
+                pass
         if not os.path.exists(SETTINGS_FILE):
             self.current_settings = {
                 "columns": DEFAULT_COLUMNS,
@@ -618,6 +672,7 @@ class PlaylistManagerApp(tk.Frame):
             return
         try:
             with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                import json
                 self.current_settings = json.load(f)
         except Exception as e:
             print(f"[ERROR] Loading settings: {e}")
@@ -986,10 +1041,10 @@ class PlaylistManagerApp(tk.Frame):
         return getattr(self, '_column_widths', {})
 
     def open_settings_dialog(self):
-        """Open a dialog for user to select the artist directory and persist it."""
-        current_dir = self.current_settings.get("artist_directory", "")
-        new_dir = filedialog.askdirectory(title="Select Artist Directory", initialdir=current_dir or os.getcwd())
-        if new_dir:
-            self.current_settings["artist_directory"] = new_dir
+        """Open the settings dialog window with categories pane."""
+        from settings_dialog import SettingsDialog
+        def save_settings_callback(new_settings):
+            self.current_settings.update(new_settings)
             self.save_settings()
-            messagebox.showinfo("Settings", f"Artist directory set to:\n{new_dir}")
+            self.set_status("Settings saved.")
+        SettingsDialog(self.master, self.current_settings.copy(), save_settings_callback)

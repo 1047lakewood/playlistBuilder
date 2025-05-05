@@ -19,6 +19,8 @@ def setup_menu_bar(app):
     app.file_menu.add_command(label="Save Current Playlist", command=app.save_current_playlist)
     app.file_menu.add_command(label="Save Current Playlist As...", command=lambda: app.save_current_playlist(save_as=True))
     app.file_menu.add_separator()
+    app.file_menu.add_command(label="Settings...", command=app.open_settings_dialog)
+    app.file_menu.add_separator()
     app.file_menu.add_command(label="Save Profile...", command=app.save_profile)
     app.load_profile_menu = tk.Menu(app.main_menu, tearoff=0)  # Dynamic menu
     app.file_menu.add_cascade(label="Load Profile", menu=app.load_profile_menu)
@@ -45,10 +47,7 @@ def setup_menu_bar(app):
     app.view_menu.add_separator()
     app.view_menu.add_command(label="Show Filter Bar", command=app.toggle_filter_bar)
 
-    # Settings Menu
-    app.settings_menu = tk.Menu(app.main_menu, tearoff=0)
-    app.main_menu.add_cascade(label="Settings", menu=app.settings_menu)
-    app.settings_menu.add_command(label="Change Artist Directory...", command=app.open_settings_dialog)
+
 def setup_ui(app):
     # --- UI Elements ---
     # Set modern, slightly larger font for the app

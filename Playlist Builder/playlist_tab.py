@@ -1,11 +1,12 @@
 import os
 import shutil
+import subprocess
 import tkinter.font as tkfont
 from metadata_utils import load_audio_metadata
-from utils import (M3U_ENCODING, format_duration)
+from utils import (M3U_ENCODING, format_duration, open_file_location)
 import logging # Add logging import
 import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog  # Ensure dialogs are imported
+from tkinter import ttk, messagebox, simpledialog, filedialog  # Ensure dialogs are imported
 
 # --- Add indicator column for artist directory match ---
 INDICATOR_COLUMN = 'Intro'
@@ -16,9 +17,12 @@ CUSTOM_COLUMNS = ['#', INDICATOR_COLUMN, 'Artist', 'Title', 'Duration', 'Path', 
 class PlaylistTab(ttk.Frame):
     def __init__(self, parent_notebook, app_controller, filepath=None, title = None, initial_columns=None):
         super().__init__(parent_notebook)
-        
-        title = os.path.splitext(os.path.basename(filepath))[0] if title is None else title
-        
+        # Defensive: Only use filepath if it is a valid string
+        if title is None:
+            if filepath and isinstance(filepath, str):
+                title = os.path.splitext(os.path.basename(filepath))[0]
+            else:
+                title = "Untitled Playlist"
         self.notebook = parent_notebook
         self.app = app_controller
         self.filepath = filepath
