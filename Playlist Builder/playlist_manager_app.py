@@ -1,13 +1,9 @@
 import tkinter as tk
-
-
 from tkinter import ttk, filedialog, simpledialog, messagebox
 import os
 import json
-
 import pygame # For prelistening
 import time
-
 from utils import (APP_NAME, DEFAULT_COLUMNS, AVAILABLE_COLUMNS, 
                              format_duration)
 from playlist_tab import PlaylistTab
@@ -15,6 +11,7 @@ import ui_setup
 import logging
 logger = logging.getLogger(__name__)
 from dialog_windows import ColumnChooserDialog
+import persistence  
 
 def get_default_settings_path():
     default_dir = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "playlistBuilder")
@@ -43,17 +40,6 @@ class PlaylistManagerApp(tk.Frame):
         # Try to load settings path from file (if exists)
         default_settings_path = get_default_settings_path()
         SETTINGS_FILE = default_settings_path
-        if os.path.exists(default_settings_path):
-            try:
-                with open(default_settings_path, 'r', encoding='utf-8') as f:
-                    s = f.read()
-                    import json
-                    loaded = json.loads(s)
-                    custom_path = loaded.get("settings_file_path")
-                    if custom_path and os.path.isfile(custom_path):
-                        SETTINGS_FILE = custom_path
-            except Exception:
-                pass
         self.load_settings()
         # Defensive: ensure open_tabs is a list, and all entries are valid strings or None
         if not isinstance(self.current_settings.get('open_tabs'), list):
@@ -89,7 +75,7 @@ class PlaylistManagerApp(tk.Frame):
             # Restore open tabs if present, else start with one empty tab
             self.restore_open_tabs()
             if not self.notebook.tabs():
-                self.add_new_tab("Untitled Playlist")
+             self.add_new_tab("Untitled Playlist")
 
         # --- Protocol Handlers ---
         if master is not None:
@@ -333,12 +319,12 @@ class PlaylistManagerApp(tk.Frame):
         for tab_id in tabs:
             try:
                 widget = self.nametowidget(tab_id)
-                # Check if the main module and PlaylistTab class exist before isinstance check
-                if main and hasattr(main, 'PlaylistTab') and isinstance(widget, main.PlaylistTab):
-                     logger.debug(f"Updating columns for tab: {widget.get_display_name()}")
-                     widget.update_displayed_columns(new_columns)
+                # Fix: Use PlaylistTab directly, not main.PlaylistTab
+                if isinstance(widget, PlaylistTab):
+                    logger.debug(f"Updating columns for tab: {getattr(widget, 'get_display_name', lambda: str(widget))()}")
+                    widget.update_displayed_columns(new_columns)
                 else:
-                     logger.warning(f"Widget for tab ID {tab_id} is not a PlaylistTab instance (type: {type(widget).__name__}). Skipping column update.")
+                    logger.warning(f"Widget for tab ID {tab_id} is not a PlaylistTab instance (type: {type(widget).__name__}). Skipping column update.")
             except tk.TclError as e:
                 logger.warning(f"TclError accessing widget for tab ID {tab_id}: {e} - Tab might have been destroyed.")
             except Exception as e:
@@ -411,10 +397,7 @@ class PlaylistManagerApp(tk.Frame):
             "columns": self.current_settings['columns']
         }
 
-        if "profiles" not in self.current_settings:
-            self.current_settings["profiles"] = {}
-        self.current_settings["profiles"][profile_name] = profile_data
-        self.current_settings["last_profile"] = profile_name
+        persistence.save_profile(self.current_settings, profile_name, profile_data)
         self.save_settings()
         self.update_load_profile_menu()
         print(f"[PROFILE] Profile '{profile_name}' saved to settings.")
@@ -463,9 +446,7 @@ class PlaylistManagerApp(tk.Frame):
         choice = result['profile']
         if choice and choice in self.current_settings["profiles"]:
             if messagebox.askyesno("Confirm Deletion", f"Are you sure you want to delete the profile '{choice}'?", parent=self):
-                del self.current_settings["profiles"][choice]
-                if self.current_settings.get("last_profile") == choice:
-                    self.current_settings["last_profile"] = None 
+                persistence.delete_profile(self.current_settings, choice)
                 self.save_settings()
                 self.update_load_profile_menu()
                 self.set_status(f"Profile '{choice}' deleted.")
@@ -642,49 +623,22 @@ class PlaylistManagerApp(tk.Frame):
             else:
                 open_tabs.append(None)
         self.current_settings['open_tabs'] = open_tabs
-        try:
-            with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
-                import json
-                json.dump(self.current_settings, f, indent=2)
-            print(f"[SETTINGS] Saved to {SETTINGS_FILE}")
-        except Exception as e:
-            print(f"[ERROR] Saving settings: {e}")
+        persistence.save_settings(SETTINGS_FILE, self.current_settings)
 
     def load_settings(self):
         global SETTINGS_FILE
         # Try to use custom path from default file
         default_settings_path = get_default_settings_path()
         SETTINGS_FILE = default_settings_path
-        if os.path.exists(default_settings_path):
-            try:
-                with open(default_settings_path, 'r', encoding='utf-8') as f:
-                    import json
-                    loaded = json.load(f)
-                    custom_path = loaded.get("settings_file_path")
-                    if custom_path and os.path.isfile(custom_path):
-                        SETTINGS_FILE = custom_path
-            except Exception:
-                pass
-        if not os.path.exists(SETTINGS_FILE):
-            self.current_settings = {
+        self.current_settings = persistence.load_settings(
+            SETTINGS_FILE,
+            {
                 "columns": DEFAULT_COLUMNS,
                 "profiles": {},
                 "last_profile": None,
                 "audio_device": None
             }
-            return
-        try:
-            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
-                import json
-                self.current_settings = json.load(f)
-        except Exception as e:
-            print(f"[ERROR] Loading settings: {e}")
-            self.current_settings = {
-                "columns": DEFAULT_COLUMNS,
-                "profiles": {},
-                "last_profile": None,
-                "audio_device": None
-            }
+        )
 
     def restore_open_tabs(self):
         """Restores open tabs from settings on startup and loads playlists."""
@@ -1053,5 +1007,6 @@ class PlaylistManagerApp(tk.Frame):
         SettingsDialog(self.master, self.current_settings.copy(), save_settings_callback)
 
     def _on_ctrl_s_global(self, event=None):
+        """Global handler for Ctrl+S to save the current playlist tab."""
         self.save_current_playlist()
         return "break"

@@ -1,116 +1,49 @@
-2025-05-05 15:38:11,527 - root - INFO - Application starting...
-2025-05-05 15:38:11,879 - root - INFO - setup_menu_bar called. Stub implementation.
-2025-05-05 15:38:11,984 - playlist_manager_app - INFO - Attempting to load profile: SFIRA PROFILE 5785 (startup=True)
-2025-05-05 15:38:11,985 - playlist_manager_app - INFO - Found profile 'SFIRA PROFILE 5785'. Proceeding with load.
-2025-05-05 15:38:11,985 - playlist_manager_app - INFO - Closing existing tabs before loading profile tabs.
-2025-05-05 15:38:11,985 - playlist_manager_app - INFO - Loading 12 tabs specified in profile 'SFIRA PROFILE 5785'.
-2025-05-05 15:38:11,986 - playlist_manager_app - INFO - Processing tab 1/12: filepath='G:/Playlists/Erev playlists/WORK.m3u8', display_name='WORK'
-2025-05-05 15:38:11,991 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/WORK.m3u8
-2025-05-05 15:38:12,417 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/WORK.m3u8': True
-2025-05-05 15:38:12,419 - playlist_manager_app - INFO - Processing tab 2/12: filepath='G:/Playlists/Erev playlists/Main playlist Achrei mos Kdoshim shavua sfira 5785.m3u8', display_name='Main playlist'
-2025-05-05 15:38:12,425 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/Main playlist Achrei mos Kdoshim shavua sfira 5785.m3u8
-2025-05-05 15:38:13,988 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/Main playlist Achrei mos Kdoshim shavua sfira 5785.m3u8': True
-2025-05-05 15:38:13,989 - playlist_manager_app - INFO - Processing tab 3/12: filepath='G:/Playlists/Erev playlists/SHIURIM.m3u8', display_name='SHIURIM'
-2025-05-05 15:38:13,995 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/SHIURIM.m3u8
-2025-05-05 15:38:26,178 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/SHIURIM.m3u8': True
-2025-05-05 15:38:26,179 - playlist_manager_app - INFO - Processing tab 4/12: filepath='G:/Playlists/Erev playlists/Patuach 2 Pesach schoira joined 5785.m3u8', display_name='Patuach 2'
-2025-05-05 15:38:26,189 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/Patuach 2 Pesach schoira joined 5785.m3u8
-2025-05-05 15:38:31,727 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/Patuach 2 Pesach schoira joined 5785.m3u8': True
-2025-05-05 15:38:31,727 - playlist_manager_app - INFO - Processing tab 5/12: filepath='G:/Playlists/Erev playlists/uminosar hakankanim 2.m3u8', display_name='uminosar hakankanim 2'
-2025-05-05 15:38:31,733 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/uminosar hakankanim 2.m3u8
-2025-05-05 15:38:32,153 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/uminosar hakankanim 2.m3u8': True
-2025-05-05 15:38:32,153 - playlist_manager_app - INFO - Processing tab 6/12: filepath='G:/Playlists/Erev playlists/PESACH ALL AM.m3u8', display_name='PESACH ALL AM'
-2025-05-05 15:38:32,159 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/PESACH ALL AM.m3u8
-2025-05-05 15:38:32,666 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/PESACH ALL AM.m3u8': True
-2025-05-05 15:38:32,667 - playlist_manager_app - INFO - Processing tab 7/12: filepath='G:/Playlists/AM PLAYLISTS/tazria mitzora AM.m3u8', display_name='tazria mitzora AM'
-2025-05-05 15:38:32,671 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/AM PLAYLISTS/tazria mitzora AM.m3u8
-2025-05-05 15:38:34,514 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/AM PLAYLISTS/tazria mitzora AM.m3u8': True
-2025-05-05 15:38:34,514 - playlist_manager_app - INFO - Processing tab 8/12: filepath='G:/Playlists/AM PLAYLISTS/parshas acharei kedoshim.m3u8', display_name='Acharei Kedoshim AM'
-2025-05-05 15:38:34,520 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/AM PLAYLISTS/parshas acharei kedoshim.m3u8
-2025-05-05 15:38:37,182 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/AM PLAYLISTS/parshas acharei kedoshim.m3u8': True
-2025-05-05 15:38:37,182 - playlist_manager_app - INFO - Processing tab 9/12: filepath='G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS playedAM.m3u8', display_name='SFRIRA-SHAVUOS played AM'
-2025-05-05 15:38:37,188 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS playedAM.m3u8
-2025-05-05 15:38:37,654 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS playedAM.m3u8': True
-2025-05-05 15:38:37,654 - playlist_manager_app - INFO - Processing tab 10/12: filepath='G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS ALL AM.m3u8', display_name='SFRIRA-SHAVUOS ALL AM'
-2025-05-05 15:38:37,658 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS ALL AM.m3u8
-2025-05-05 15:38:43,560 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS ALL AM.m3u8': True
-2025-05-05 15:38:43,561 - playlist_manager_app - INFO - Processing tab 11/12: filepath='G:/Playlists/Erev playlists/Shmini achrei Pesach shavua sfira 5785.m3u8', display_name='Shmini'
-2025-05-05 15:38:43,567 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/Shmini achrei Pesach shavua sfira 5785.m3u8
-2025-05-05 15:38:44,285 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/Shmini achrei Pesach shavua sfira 5785.m3u8': True
-2025-05-05 15:38:44,286 - playlist_manager_app - INFO - Processing tab 12/12: filepath='G:/Playlists/Erev playlists/Tazria Mitsora achrei Pesach shavua sfira 5785.m3u8', display_name='Tazria Mitsora'
-2025-05-05 15:38:44,291 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/Tazria Mitsora achrei Pesach shavua sfira 5785.m3u8
-2025-05-05 15:38:44,913 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/Tazria Mitsora achrei Pesach shavua sfira 5785.m3u8': True
-2025-05-05 15:38:44,914 - playlist_manager_app - INFO - Applying column settings to all tabs: ['#', 'Intro', 'Artist', 'Title', 'Duration', 'Path', 'Exists']
-2025-05-05 15:38:44,915 - playlist_manager_app - ERROR - Error updating columns for tab ID .!playlistmanagerapp.!notebook.!playlisttab13: name 'main' is not defined
-Traceback (most recent call last):
-  File "G:\Misc\Dev\Playlist Builder\playlist_manager_app.py", line 337, in update_column_settings_for_all_tabs
-    if main and hasattr(main, 'PlaylistTab') and isinstance(widget, main.PlaylistTab):
-       ^^^^
-NameError: name 'main' is not defined. Did you mean: 'min'?
-2025-05-05 15:38:44,925 - playlist_manager_app - ERROR - Error updating columns for tab ID .!playlistmanagerapp.!notebook.!playlisttab14: name 'main' is not defined
-Traceback (most recent call last):
-  File "G:\Misc\Dev\Playlist Builder\playlist_manager_app.py", line 337, in update_column_settings_for_all_tabs
-    if main and hasattr(main, 'PlaylistTab') and isinstance(widget, main.PlaylistTab):
-       ^^^^
-NameError: name 'main' is not defined. Did you mean: 'min'?
-2025-05-05 15:38:44,926 - playlist_manager_app - ERROR - Error updating columns for tab ID .!playlistmanagerapp.!notebook.!playlisttab15: name 'main' is not defined
-Traceback (most recent call last):
-  File "G:\Misc\Dev\Playlist Builder\playlist_manager_app.py", line 337, in update_column_settings_for_all_tabs
-    if main and hasattr(main, 'PlaylistTab') and isinstance(widget, main.PlaylistTab):
-       ^^^^
-NameError: name 'main' is not defined. Did you mean: 'min'?
-2025-05-05 15:38:44,927 - playlist_manager_app - ERROR - Error updating columns for tab ID .!playlistmanagerapp.!notebook.!playlisttab16: name 'main' is not defined
-Traceback (most recent call last):
-  File "G:\Misc\Dev\Playlist Builder\playlist_manager_app.py", line 337, in update_column_settings_for_all_tabs
-    if main and hasattr(main, 'PlaylistTab') and isinstance(widget, main.PlaylistTab):
-       ^^^^
-NameError: name 'main' is not defined. Did you mean: 'min'?
-2025-05-05 15:38:44,929 - playlist_manager_app - ERROR - Error updating columns for tab ID .!playlistmanagerapp.!notebook.!playlisttab17: name 'main' is not defined
-Traceback (most recent call last):
-  File "G:\Misc\Dev\Playlist Builder\playlist_manager_app.py", line 337, in update_column_settings_for_all_tabs
-    if main and hasattr(main, 'PlaylistTab') and isinstance(widget, main.PlaylistTab):
-       ^^^^
-NameError: name 'main' is not defined. Did you mean: 'min'?
-2025-05-05 15:38:44,930 - playlist_manager_app - ERROR - Error updating columns for tab ID .!playlistmanagerapp.!notebook.!playlisttab18: name 'main' is not defined
-Traceback (most recent call last):
-  File "G:\Misc\Dev\Playlist Builder\playlist_manager_app.py", line 337, in update_column_settings_for_all_tabs
-    if main and hasattr(main, 'PlaylistTab') and isinstance(widget, main.PlaylistTab):
-       ^^^^
-NameError: name 'main' is not defined. Did you mean: 'min'?
-2025-05-05 15:38:44,931 - playlist_manager_app - ERROR - Error updating columns for tab ID .!playlistmanagerapp.!notebook.!playlisttab19: name 'main' is not defined
-Traceback (most recent call last):
-  File "G:\Misc\Dev\Playlist Builder\playlist_manager_app.py", line 337, in update_column_settings_for_all_tabs
-    if main and hasattr(main, 'PlaylistTab') and isinstance(widget, main.PlaylistTab):
-       ^^^^
-NameError: name 'main' is not defined. Did you mean: 'min'?
-2025-05-05 15:38:44,932 - playlist_manager_app - ERROR - Error updating columns for tab ID .!playlistmanagerapp.!notebook.!playlisttab20: name 'main' is not defined
-Traceback (most recent call last):
-  File "G:\Misc\Dev\Playlist Builder\playlist_manager_app.py", line 337, in update_column_settings_for_all_tabs
-    if main and hasattr(main, 'PlaylistTab') and isinstance(widget, main.PlaylistTab):
-       ^^^^
-NameError: name 'main' is not defined. Did you mean: 'min'?
-2025-05-05 15:38:44,933 - playlist_manager_app - ERROR - Error updating columns for tab ID .!playlistmanagerapp.!notebook.!playlisttab21: name 'main' is not defined
-Traceback (most recent call last):
-  File "G:\Misc\Dev\Playlist Builder\playlist_manager_app.py", line 337, in update_column_settings_for_all_tabs
-    if main and hasattr(main, 'PlaylistTab') and isinstance(widget, main.PlaylistTab):
-       ^^^^
-NameError: name 'main' is not defined. Did you mean: 'min'?
-2025-05-05 15:38:44,934 - playlist_manager_app - ERROR - Error updating columns for tab ID .!playlistmanagerapp.!notebook.!playlisttab22: name 'main' is not defined
-Traceback (most recent call last):
-  File "G:\Misc\Dev\Playlist Builder\playlist_manager_app.py", line 337, in update_column_settings_for_all_tabs
-    if main and hasattr(main, 'PlaylistTab') and isinstance(widget, main.PlaylistTab):
-       ^^^^
-NameError: name 'main' is not defined. Did you mean: 'min'?
-2025-05-05 15:38:44,935 - playlist_manager_app - ERROR - Error updating columns for tab ID .!playlistmanagerapp.!notebook.!playlisttab23: name 'main' is not defined
-Traceback (most recent call last):
-  File "G:\Misc\Dev\Playlist Builder\playlist_manager_app.py", line 337, in update_column_settings_for_all_tabs
-    if main and hasattr(main, 'PlaylistTab') and isinstance(widget, main.PlaylistTab):
-       ^^^^
-NameError: name 'main' is not defined. Did you mean: 'min'?
-2025-05-05 15:38:44,936 - playlist_manager_app - ERROR - Error updating columns for tab ID .!playlistmanagerapp.!notebook.!playlisttab24: name 'main' is not defined
-Traceback (most recent call last):
-  File "G:\Misc\Dev\Playlist Builder\playlist_manager_app.py", line 337, in update_column_settings_for_all_tabs
-    if main and hasattr(main, 'PlaylistTab') and isinstance(widget, main.PlaylistTab):
-       ^^^^
-NameError: name 'main' is not defined. Did you mean: 'min'?
-2025-05-05 15:38:44,938 - playlist_manager_app - INFO - Profile 'SFIRA PROFILE 5785' loading complete.
+2025-05-05 15:48:14,054 - root - INFO - Application starting...
+2025-05-05 15:48:14,308 - root - INFO - setup_menu_bar called. Stub implementation.
+2025-05-05 15:48:14,418 - playlist_manager_app - INFO - Attempting to load profile: SFIRA PROFILE 5785 (startup=True)
+2025-05-05 15:48:14,419 - playlist_manager_app - INFO - Found profile 'SFIRA PROFILE 5785'. Proceeding with load.
+2025-05-05 15:48:14,422 - playlist_manager_app - INFO - Closing existing tabs before loading profile tabs.
+2025-05-05 15:48:14,422 - playlist_manager_app - INFO - Loading 12 tabs specified in profile 'SFIRA PROFILE 5785'.
+2025-05-05 15:48:14,422 - playlist_manager_app - INFO - Processing tab 1/12: filepath='G:/Playlists/Erev playlists/WORK.m3u8', display_name='WORK'
+2025-05-05 15:48:14,427 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/WORK.m3u8
+2025-05-05 15:48:14,804 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/WORK.m3u8': True
+2025-05-05 15:48:14,804 - playlist_manager_app - INFO - Processing tab 2/12: filepath='G:/Playlists/Erev playlists/Main playlist Achrei mos Kdoshim shavua sfira 5785.m3u8', display_name='Main playlist'
+2025-05-05 15:48:14,810 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/Main playlist Achrei mos Kdoshim shavua sfira 5785.m3u8
+2025-05-05 15:48:15,570 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/Main playlist Achrei mos Kdoshim shavua sfira 5785.m3u8': True
+2025-05-05 15:48:15,570 - playlist_manager_app - INFO - Processing tab 3/12: filepath='G:/Playlists/Erev playlists/SHIURIM.m3u8', display_name='SHIURIM'
+2025-05-05 15:48:15,576 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/SHIURIM.m3u8
+2025-05-05 15:48:21,111 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/SHIURIM.m3u8': True
+2025-05-05 15:48:21,111 - playlist_manager_app - INFO - Processing tab 4/12: filepath='G:/Playlists/Erev playlists/Patuach 2 Pesach schoira joined 5785.m3u8', display_name='Patuach 2'
+2025-05-05 15:48:21,117 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/Patuach 2 Pesach schoira joined 5785.m3u8
+2025-05-05 15:48:25,759 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/Patuach 2 Pesach schoira joined 5785.m3u8': True
+2025-05-05 15:48:25,760 - playlist_manager_app - INFO - Processing tab 5/12: filepath='G:/Playlists/Erev playlists/uminosar hakankanim 2.m3u8', display_name='uminosar hakankanim 2'
+2025-05-05 15:48:25,764 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/uminosar hakankanim 2.m3u8
+2025-05-05 15:48:26,201 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/uminosar hakankanim 2.m3u8': True
+2025-05-05 15:48:26,201 - playlist_manager_app - INFO - Processing tab 6/12: filepath='G:/Playlists/Erev playlists/PESACH ALL AM.m3u8', display_name='PESACH ALL AM'
+2025-05-05 15:48:26,206 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/PESACH ALL AM.m3u8
+2025-05-05 15:48:26,654 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/PESACH ALL AM.m3u8': True
+2025-05-05 15:48:26,654 - playlist_manager_app - INFO - Processing tab 7/12: filepath='G:/Playlists/AM PLAYLISTS/tazria mitzora AM.m3u8', display_name='tazria mitzora AM'
+2025-05-05 15:48:26,660 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/AM PLAYLISTS/tazria mitzora AM.m3u8
+2025-05-05 15:48:28,273 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/AM PLAYLISTS/tazria mitzora AM.m3u8': True
+2025-05-05 15:48:28,273 - playlist_manager_app - INFO - Processing tab 8/12: filepath='G:/Playlists/AM PLAYLISTS/parshas acharei kedoshim.m3u8', display_name='Acharei Kedoshim AM'
+2025-05-05 15:48:28,279 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/AM PLAYLISTS/parshas acharei kedoshim.m3u8
+2025-05-05 15:48:30,980 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/AM PLAYLISTS/parshas acharei kedoshim.m3u8': True
+2025-05-05 15:48:30,980 - playlist_manager_app - INFO - Processing tab 9/12: filepath='G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS playedAM.m3u8', display_name='SFRIRA-SHAVUOS played AM'
+2025-05-05 15:48:30,985 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS playedAM.m3u8
+2025-05-05 15:48:31,435 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS playedAM.m3u8': True
+2025-05-05 15:48:31,435 - playlist_manager_app - INFO - Processing tab 10/12: filepath='G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS ALL AM.m3u8', display_name='SFRIRA-SHAVUOS ALL AM'
+2025-05-05 15:48:31,442 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS ALL AM.m3u8
+2025-05-05 15:48:37,354 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/AM PLAYLISTS/SFRIRA-SHAVUOS ALL AM.m3u8': True
+2025-05-05 15:48:37,354 - playlist_manager_app - INFO - Processing tab 11/12: filepath='G:/Playlists/Erev playlists/Shmini achrei Pesach shavua sfira 5785.m3u8', display_name='Shmini'
+2025-05-05 15:48:37,361 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/Shmini achrei Pesach shavua sfira 5785.m3u8
+2025-05-05 15:48:38,030 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/Shmini achrei Pesach shavua sfira 5785.m3u8': True
+2025-05-05 15:48:38,030 - playlist_manager_app - INFO - Processing tab 12/12: filepath='G:/Playlists/Erev playlists/Tazria Mitsora achrei Pesach shavua sfira 5785.m3u8', display_name='Tazria Mitsora'
+2025-05-05 15:48:38,034 - playlist_manager_app - INFO - Calling load_playlist_from_file for: G:/Playlists/Erev playlists/Tazria Mitsora achrei Pesach shavua sfira 5785.m3u8
+2025-05-05 15:48:38,628 - playlist_manager_app - INFO - load_playlist_from_file result for 'G:/Playlists/Erev playlists/Tazria Mitsora achrei Pesach shavua sfira 5785.m3u8': True
+2025-05-05 15:48:38,629 - persistence - INFO - Settings saved to 'C:\Users\Admin\AppData\Roaming\playlistBuilder\playlist_editor_settings.json'.
+2025-05-05 15:48:38,630 - playlist_manager_app - INFO - Applying column settings to all tabs: ['#', 'Intro', 'Artist', 'Title', 'Duration', 'Path', 'Exists']
+2025-05-05 15:48:38,630 - playlist_manager_app - INFO - Profile 'SFIRA PROFILE 5785' loading complete.
+2025-05-05 15:49:43,528 - persistence - INFO - Profile 'tests' saved in settings.
+2025-05-05 15:49:43,530 - persistence - INFO - Settings saved to 'C:\Users\Admin\AppData\Roaming\playlistBuilder\playlist_editor_settings.json'.
+2025-05-05 15:49:54,803 - persistence - INFO - Settings saved to 'C:\Users\Admin\AppData\Roaming\playlistBuilder\playlist_editor_settings.json'.
+2025-05-05 15:49:58,178 - persistence - INFO - Settings saved to 'C:\Users\Admin\AppData\Roaming\playlistBuilder\playlist_editor_settings.json'.
