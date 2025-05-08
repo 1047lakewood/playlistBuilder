@@ -3,14 +3,15 @@ import shutil
 import subprocess
 import tkinter.font as tkfont
 from metadata_utils import load_audio_metadata
-from utils import (M3U_ENCODING, format_duration, open_file_location)
+from utils import (M3U_ENCODING, format_duration, open_file_location, format_start_time)
 import logging # Add logging import
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog, filedialog  # Ensure dialogs are imported
 
 # --- Add indicator column for artist directory match ---
+START_TIME_COLUMN = 'Start Time'
 INDICATOR_COLUMN = 'Intro'
-CUSTOM_COLUMNS = ['#', INDICATOR_COLUMN, 'Artist', 'Title', 'Duration', 'Path', 'Exists']
+CUSTOM_COLUMNS = ['#', START_TIME_COLUMN, INDICATOR_COLUMN, 'Artist', 'Title', 'Duration', 'Path', 'Exists']
 
 # --- Playlist Tab Class ---
 
@@ -28,8 +29,9 @@ class PlaylistTab(ttk.Frame):
         self.filepath = filepath
         self.is_dirty = False
         self._track_data = [] # List of dictionaries holding track metadata
-        self._iid_map = {} # Maps Treeview iid to track data dictionary (unique copy for each entry)
+        self._iid_map = {} # Maps Treeview iid to index in _track_data for quick lookup
         self.tab_display_name = title
+        self._start_time_anchor = None  # (row_index, day, time)
 
         # Use custom columns for display
         self.visible_columns = self.ensure_indicator_column(initial_columns if initial_columns else CUSTOM_COLUMNS)
@@ -161,6 +163,8 @@ class PlaylistTab(ttk.Frame):
         # self.context_menu.add_command(label="Rename Tab", command=self.context_rename_tab)
         self.context_menu.add_command(label="Check File Existence", command=self.context_check_existence)
         self.context_menu.add_command(label="Move Audacity Macro Output Here", command=self.context_move_macro_output)
+        self.context_menu.add_separator()
+        self.context_menu.add_command(label="Calculate Start Times", command=self.context_calculate_start_times)
 
         # Enable drag-and-drop for reordering playlist tracks in the treeview
         # --- Drag-and-drop row reordering (internal only) ---
@@ -191,9 +195,20 @@ class PlaylistTab(ttk.Frame):
         self._path_tooltip_label = None
         self.tree.bind('<Motion>', self._on_tree_motion)
         self.tree.bind('<Leave>', self._on_tree_leave)
+        
+        # If a filepath was provided, load the playlist
+        if self.filepath and isinstance(self.filepath, str):
+            print(f"[DEBUG] Auto-loading playlist from file: {self.filepath}")
+            self.load_playlist_from_file(self.filepath)
 
     def ensure_indicator_column(self, columns):
         cols = list(columns)
+        if START_TIME_COLUMN not in cols:
+            if '#' in cols:
+                idx = cols.index('#') + 1
+                cols.insert(idx, START_TIME_COLUMN)
+            else:
+                cols.insert(0, START_TIME_COLUMN)
         if INDICATOR_COLUMN not in cols:
             if '#' in cols:
                 idx = cols.index('#') + 1
@@ -209,8 +224,11 @@ class PlaylistTab(ttk.Frame):
             self.update_tab_title()
 
     def update_tab_title(self):
-        idx = self.notebook.index(self)
-        self.notebook.tab(idx, text=self.get_display_name())
+        try:
+            idx = self.notebook.index(self)
+            self.notebook.tab(idx, text=self.get_display_name())
+        except Exception as e:
+            print(f"[DEBUG] Could not update tab title: {e} - This is normal during initialization")
 
     def get_display_name(self):
         return self.tab_display_name + ("*" if self.is_dirty else "")
@@ -249,47 +267,119 @@ class PlaylistTab(ttk.Frame):
         self.refresh_display(custom_data=display_data)
 
     def refresh_display(self, sort_col=None, reverse_sort=False, keep_selection=True, custom_data=None):
-        selected_iids = self.tree.selection() if keep_selection else []
-        for item in self.tree.get_children():
-            self.tree.delete(item)
-        self._iid_map.clear()
-        if sort_col:
-            self._sort_internal_data(sort_col, reverse_sort)
-        display_data = custom_data if custom_data is not None else self._track_data
-
-        # --- Artist Directory Matching ---
-        artist_dir = None
-        if hasattr(self.app, 'current_settings'):
-            artist_dir = self.app.current_settings.get('artist_directory')
-        artist_files = []
-        if artist_dir and os.path.isdir(artist_dir):
-            try:
-                artist_files = [os.path.splitext(fname)[0].lower() for fname in os.listdir(artist_dir)]
-            except Exception:
-                pass
-
-        for index, track_info in enumerate(display_data):
-            artist = track_info.get('artist', '').strip().lower()
-            artist_base = os.path.splitext(artist)[0]
-            # --- Update: match if any file in artist_dir startswith artist_base ---
-            indicator = ''
-            if artist_base:
-                for name in artist_files:
-                    if name.startswith(artist_base):
-                        indicator = '•'
-                        break
-            values = [index + 1, indicator] + [self.get_formatted_value(track_info, col) for col in CUSTOM_COLUMNS if col not in ['#', INDICATOR_COLUMN]]
-            tag = "missing" if not track_info.get('exists', True) else "found"
-            iid = self.tree.insert("", tk.END, values=values, tags=(tag,))
-            # Create a new dictionary to ensure each entry has a unique reference, even for duplicate files
-            track_copy = dict(track_info)
-            self._iid_map[iid] = track_copy
-        if keep_selection:
-            self.tree.selection_set(())
+        try:
+            print(f"DEBUG: refresh_display called with {len(self._track_data)} tracks")
+            logging.info(f"Refreshing display with {len(self._track_data)} tracks")
             
+            # Store selected items for later restoration
+            selected_iids = self.tree.selection() if keep_selection else []
+            selected_track_ids = [self._iid_map[iid] for iid in selected_iids if iid in self._iid_map]
+            
+            # Clear existing items
+            print(f"DEBUG: Clearing {len(self.tree.get_children())} existing items")
+            for item in self.tree.get_children():
+                self.tree.delete(item)
+            self._iid_map.clear()
+            
+            # Sort if requested
+            if sort_col:
+                self._sort_internal_data(sort_col, reverse_sort)
+                
+            # Get data to display
+            display_data = custom_data if custom_data is not None else self._track_data
+            print(f"DEBUG: Will display {len(display_data)} tracks")
+            
+            if not display_data:
+                print("DEBUG: No tracks to display")
+                logging.warning("No tracks to display")
+                return
+
+            # --- Artist Directory Matching ---
+            artist_dir = None
+            if hasattr(self.app, 'current_settings'):
+                artist_dir = self.app.current_settings.get('artist_directory')
+            artist_files = []
+            if artist_dir and os.path.isdir(artist_dir):
+                try:
+                    artist_files = [os.path.splitext(fname)[0].lower() for fname in os.listdir(artist_dir)]
+                except Exception as e:
+                    print(f"DEBUG: Error getting artist files: {e}")
+                    logging.error(f"Error getting artist files: {e}")
+
+            # Insert tracks into treeview
+            print(f"DEBUG: Inserting {len(display_data)} tracks into treeview")
+            for index, track_info in enumerate(display_data):
+                try:
+                    # Get artist for indicator
+                    artist = track_info.get('artist', '').strip().lower()
+                    artist_base = os.path.splitext(artist)[0]
+                    indicator = ''
+                    if artist_base:
+                        for name in artist_files:
+                            if name.startswith(artist_base):
+                                indicator = '•'
+                                break
+                    
+                    # Prepare row values
+                    # First add the fixed columns: row number, start time, indicator
+                    row_values = [str(index + 1), 
+                                 track_info.get(START_TIME_COLUMN, ''), 
+                                 indicator]
+                    
+                    # Then add values for each remaining column
+                    for col in CUSTOM_COLUMNS:
+                        if col not in ['#', START_TIME_COLUMN, INDICATOR_COLUMN]:
+                            value = self.get_formatted_value(track_info, col)
+                            row_values.append(value)
+                    
+                    # Ensure we have the right number of values
+                    if len(row_values) != len(CUSTOM_COLUMNS):
+                        print(f"DEBUG: Warning - row values count ({len(row_values)}) doesn't match columns count ({len(CUSTOM_COLUMNS)})")
+                        # Pad with empty strings if needed
+                        while len(row_values) < len(CUSTOM_COLUMNS):
+                            row_values.append('')
+                        # Truncate if too many
+                        if len(row_values) > len(CUSTOM_COLUMNS):
+                            row_values = row_values[:len(CUSTOM_COLUMNS)]
+                    
+                    # Determine tag based on file existence
+                    tag = "missing" if not track_info.get('exists', True) else "found"
+                    
+                    # Insert into treeview
+                    if index < 5:  # Print debug for first few tracks
+                        print(f"DEBUG: Inserting track {index+1}: {track_info.get('title')}")
+                        print(f"DEBUG: Row values: {row_values}")
+                    
+                    iid = self.tree.insert("", tk.END, values=row_values, tags=(tag,))
+                    self._iid_map[iid] = track_info
+                    
+                except Exception as e:
+                    import traceback
+                    print(f"DEBUG: Error adding track {index+1} to treeview: {e}")
+                    print(traceback.format_exc())
+                    logging.error(f"Error adding track to treeview: {e}\nTrack info: {track_info}")
+            
+            # Restore selection
+            if keep_selection and selected_track_ids:
+                new_selection = [iid for iid, track in self._iid_map.items() if track in selected_track_ids]
+                self.tree.selection_set(new_selection)
+            elif keep_selection:
+                self.tree.selection_set(())
+                
+            print(f"DEBUG: Successfully displayed {len(self._iid_map)} tracks in treeview")
+            logging.info(f"Successfully displayed {len(self._iid_map)} tracks in treeview")
+            
+        except Exception as e:
+            import traceback
+            error_trace = traceback.format_exc()
+            print(f"DEBUG: Error in refresh_display: {e}\n{error_trace}")
+            logging.error(f"Error in refresh_display: {e}\n{error_trace}")
+
     def get_formatted_value(self, track_data, column_id):
         if column_id == '#':
             return '' # Handled in refresh_display
+        elif column_id == START_TIME_COLUMN:
+            return track_data.get(START_TIME_COLUMN, '')
         elif column_id == 'Duration':
             return format_duration(track_data.get('duration'))
         elif column_id == 'Exists':
@@ -355,7 +445,7 @@ class PlaylistTab(ttk.Frame):
                     if name.startswith(artist_base):
                         indicator = '•'
                         break
-            values = [row_index + 1, indicator] + [self.get_formatted_value(track_data, col) for col in CUSTOM_COLUMNS if col not in ['#', INDICATOR_COLUMN]]
+            values = [row_index + 1, track_data.get(START_TIME_COLUMN, ''), indicator] + [self.get_formatted_value(track_data, col) for col in CUSTOM_COLUMNS if col not in ['#', START_TIME_COLUMN, INDICATOR_COLUMN]]
             tag = "missing" if not track_data.get('exists', True) else "found"
             self.tree.item(iid, values=values, tags=(tag,))
             # Update the map reference just in case the dict instance changed (it shouldn't if modified in place)
@@ -407,24 +497,15 @@ class PlaylistTab(ttk.Frame):
 
     def add_tracks(self, track_data_list):
         """Adds multiple tracks (list of dicts) to the internal data and refreshes view."""
-        # Each track gets its own dictionary instance, even if it's a duplicate file
+        # Could add checks for duplicates here if desired
         newly_added_iids = []
-        # --- Artist Directory Matching ---
-        artist_dir = None
-        if hasattr(self.app, 'current_settings'):
-            artist_dir = self.app.current_settings.get('artist_directory')
-        artist_files = []
-        if artist_dir and os.path.isdir(artist_dir):
-            try:
-                artist_files = [os.path.splitext(fname)[0].lower() for fname in os.listdir(artist_dir)]
-            except Exception:
-                pass
         for track_info in track_data_list:
              # Ensure necessary keys exist, even if blank
              track_info.setdefault('artist', ' ')
              track_info.setdefault('title', os.path.splitext(os.path.basename(track_info.get('path','')))[0] if track_info.get('path') else ' ')
              track_info.setdefault('path', None)
              track_info.setdefault('exists', os.path.exists(track_info['path']) if track_info['path'] else False)
+             track_info.setdefault(START_TIME_COLUMN, '')
              # Add other defaults...
 
              self._track_data.append(track_info)
@@ -439,6 +520,18 @@ class PlaylistTab(ttk.Frame):
                     if name.startswith(artist_base):
                         indicator = '•'
                         break
+             # Correctly align values with columns: [row number, indicator, ...]
+             row_number = len(self._track_data)  # 1-based index for new row
+             values = [row_number, track_info.get(START_TIME_COLUMN, ''), indicator] + [self.get_formatted_value(track_info, col) for col in CUSTOM_COLUMNS if col not in ['#', START_TIME_COLUMN, INDICATOR_COLUMN]]
+             tag = "missing" if not track_info.get('exists', True) else "found"
+             iid = self.tree.insert("", tk.END, values=values, tags=(tag,))
+             self._iid_map[iid] = track_info
+             newly_added_iids.append(iid)
+
+
+        # self.refresh_display(keep_selection=False) # Full refresh might be better for consistency
+        self.mark_dirty()
+        self.recalculate_start_times()
         # Optionally scroll to and select the newly added items
         if newly_added_iids:
              self.tree.selection_set(newly_added_iids)
@@ -452,19 +545,39 @@ class PlaylistTab(ttk.Frame):
             filetypes=[("Audio Files", "*.mp3 *.wav *.ogg *.flac *.m4a *.aac"), ("All Files", "*.*")]
         )
         if filepaths:
-            self.app.set_status(f"Scanning {len(filepaths)} files...")
+            try:
+                self.app.view.set_status
+            except Exception as e:
+                print(f"[DEBUG] Could not update status: {e}")
+                return
+            self.app.view.set_status(f"Scanning {len(filepaths)} files...")
             new_tracks = []
             # Process in chunks or thread for large additions? For now, direct.
             for i, path in enumerate(filepaths):
-                 self.app.set_status(f"Scanning file {i+1}/{len(filepaths)}: {os.path.basename(path)}")
-                 self.app.update_idletasks() # Allow UI to update status
-                 metadata = load_audio_metadata(path)
-                 if metadata['duration'] is None:
-                     self.app.set_status(f"Warning: No duration for {os.path.basename(path)}")
-                 new_tracks.append(metadata)
+                try:
+                    self.app.view.set_status
+                except Exception as e:
+                    print(f"[DEBUG] Could not update status: {e}")
+                    return
+                self.app.view.set_status(f"Scanning file {i+1}/{len(filepaths)}: {os.path.basename(path)}")
+                self.app.update_idletasks() # Allow UI to update status
+                metadata = load_audio_metadata(path)
+                if metadata['duration'] is None:
+                    try:
+                        self.app.view.set_status
+                    except Exception as e:
+                        print(f"[DEBUG] Could not update status: {e}")
+                        return
+                    self.app.view.set_status(f"Warning: No duration for {os.path.basename(path)}")
+                new_tracks.append(metadata)
 
             self.add_tracks(new_tracks)
-            self.app.set_status(f"Added {len(new_tracks)} tracks.")
+            try:
+                self.app.view.set_status
+            except Exception as e:
+                print(f"[DEBUG] Could not update status: {e}")
+                return
+            self.app.view.set_status(f"Added {len(new_tracks)} tracks.")
 
     def add_folder(self):
         """Opens dialog to add all audio files from a folder (recursively)."""
@@ -472,7 +585,12 @@ class PlaylistTab(ttk.Frame):
         if not folderpath:
             return
 
-        self.app.set_status(f"Scanning folder: {folderpath}...")
+        try:
+            self.app.view.set_status
+        except Exception as e:
+            print(f"[DEBUG] Could not update status: {e}")
+            return
+        self.app.view.set_status(f"Scanning folder: {folderpath}...")
         self.app.update_idletasks()
         
         new_tracks = []
@@ -484,18 +602,38 @@ class PlaylistTab(ttk.Frame):
                 if os.path.splitext(filename)[1].lower() in audio_extensions:
                     file_count += 1
                     filepath = os.path.join(root, filename)
-                    self.app.set_status(f"Scanning file {file_count}: {filename}")
+                    try:
+                        self.app.view.set_status
+                    except Exception as e:
+                        print(f"[DEBUG] Could not update status: {e}")
+                        return
+                    self.app.view.set_status(f"Scanning file {file_count}: {filename}")
                     self.app.update_idletasks()
                     metadata = load_audio_metadata(filepath)
                     if metadata['duration'] is None:
-                        self.app.set_status(f"Warning: No duration for {filename}")
+                        try:
+                            self.app.view.set_status
+                        except Exception as e:
+                            print(f"[DEBUG] Could not update status: {e}")
+                            return
+                        self.app.view.set_status(f"Warning: No duration for {filename}")
                     new_tracks.append(metadata)
 
         if new_tracks:
             self.add_tracks(new_tracks)
-            self.app.set_status(f"Added {len(new_tracks)} tracks from folder.")
+            try:
+                self.app.view.set_status
+            except Exception as e:
+                print(f"[DEBUG] Could not update status: {e}")
+                return
+            self.app.view.set_status(f"Added {len(new_tracks)} tracks from folder.")
         else:
-            self.app.set_status(f"No supported audio files found in folder: {folderpath}")
+            try:
+                self.app.view.set_status
+            except Exception as e:
+                print(f"[DEBUG] Could not update status: {e}")
+                return
+            self.app.view.set_status(f"No supported audio files found in folder: {folderpath}")
 
 
     def remove_selected_tracks(self):
@@ -521,7 +659,13 @@ class PlaylistTab(ttk.Frame):
 
         self.mark_dirty()
         self._auto_update_row_numbers()  # Force row number update after removal
-        self.app.set_status(f"Removed {len(selected_iids)} track(s).")
+        self.recalculate_start_times()
+        try:
+            self.app.view.set_status
+        except Exception as e:
+            print(f"[DEBUG] Could not update status: {e}")
+            return
+        self.app.view.set_status(f"Removed {len(selected_iids)} track(s).")
 
     def move_selected_up(self):
          """Moves selected items one position up in the Treeview."""
@@ -563,6 +707,7 @@ class PlaylistTab(ttk.Frame):
 
          if moved_count > 0:
               self.mark_dirty()
+              self.recalculate_start_times()
               # Renumbering might be needed here if '#' column is critical
               # self.refresh_display(keep_selection=True) # Easier but resets view state
 
@@ -603,6 +748,7 @@ class PlaylistTab(ttk.Frame):
          
          if moved_count > 0:
              self.mark_dirty()
+             self.recalculate_start_times()
              # Renumbering might be needed here if '#' column is critical
              # self.refresh_display(keep_selection=True)
 
@@ -654,7 +800,12 @@ class PlaylistTab(ttk.Frame):
             # self.tree.heading(column_id, command=str(new_command) + f" {column_id}_asc")
 
         self.refresh_display(sort_col=column_id, reverse_sort=reverse, keep_selection=False)
-        self.app.set_status(f"Sorted by {column_id} {'Descending' if reverse else 'Ascending'}")
+        try:
+            self.app.view.set_status
+        except Exception as e:
+            print(f"[DEBUG] Could not update status: {e}")
+            return
+        self.app.view.set_status(f"Sorted by {column_id} {'Descending' if reverse else 'Ascending'}")
 
 
     def filter_tracks(self, *args):
@@ -741,7 +892,12 @@ class PlaylistTab(ttk.Frame):
             return
         if not new_path or new_path == old_path:
             logging.info("[context_rename_file_manual] Rename cancelled or unchanged.")
-            self.app.set_status("Rename cancelled.")
+            try:
+                self.app.view.set_status
+            except Exception as e:
+                print(f"[DEBUG] Could not update status: {e}")
+                return
+            self.app.view.set_status("Rename cancelled.")
             return
         invalid_chars = ['/', '\\', ':']
         if any(char in os.path.basename(new_path) for char in invalid_chars):
@@ -752,16 +908,29 @@ class PlaylistTab(ttk.Frame):
             if track_data['exists']:
                 try:
                     shutil.move(old_path, new_path)
-                    self.app.set_status(f"Renamed '{os.path.basename(old_path)}' to '{os.path.basename(new_path)}'")
-                    track_data['exists'] = True
                 except Exception as e:
-                    messagebox.showerror("Rename Failed", f"Could not rename file:\n{old_path}\n\nError: {e}")
-                    self.app.set_status("File rename failed.")
-                    track_data['exists'] = os.path.exists(old_path)
-                    self.update_track_display(iid, track_data)
+                    print(f"[DEBUG] Could not update status: {e}")
                     return
-            else:
-                self.app.set_status(f"Updated non-existent playlist entry path to '{os.path.basename(new_path)}'")
+                self.app.view.set_status(f"Renamed '{os.path.basename(old_path)}' to '{os.path.basename(new_path)}'")
+                track_data['exists'] = True
+            except Exception as e:
+                messagebox.showerror("Rename Failed", f"Could not rename file:\n{old_path}\n\nError: {e}")
+                try:
+                    self.app.view.set_status
+                except Exception as e:
+                    print(f"[DEBUG] Could not update status: {e}")
+                return
+            self.app.view.set_status("File rename failed.")
+            track_data['exists'] = os.path.exists(old_path)
+            self.update_track_display(iid, track_data)
+            return
+        else:
+            try:
+                self.app.view.set_status
+            except Exception as e:
+                print(f"[DEBUG] Could not update status: {e}")
+                return
+            self.app.view.set_status(f"Updated non-existent playlist entry path to '{os.path.basename(new_path)}'")
             track_data['path'] = new_path
             if track_data.get('title') == os.path.splitext(os.path.basename(old_path))[0]:
                 track_data['title'] = os.path.splitext(os.path.basename(new_path))[0]
@@ -774,7 +943,12 @@ class PlaylistTab(ttk.Frame):
             self.mark_dirty()
         except Exception as e:
             messagebox.showerror("Rename Failed", f"Could not update playlist entry:\n{old_path}\n\nError: {e}")
-            self.app.set_status("File rename failed.")
+            try:
+                self.app.view.set_status
+            except Exception as e:
+                print(f"[DEBUG] Could not update status: {e}")
+                return
+            self.app.view.set_status("File rename failed.")
             track_data['exists'] = os.path.exists(old_path)
             self.update_track_display(iid, track_data)
 
@@ -813,22 +987,42 @@ class PlaylistTab(ttk.Frame):
             return
         if not new_path or new_path == old_path:
             logging.info("[context_rename_file_browse] Rename cancelled or unchanged.")
-            self.app.set_status("Rename cancelled.")
+            try:
+                self.app.view.set_status
+            except Exception as e:
+                print(f"[DEBUG] Could not update status: {e}")
+                return
+            self.app.view.set_status("Rename cancelled.")
             return
         try:
             if track_data['exists']:
                 try:
                     shutil.move(old_path, new_path)
-                    self.app.set_status(f"Renamed '{os.path.basename(old_path)}' to '{os.path.basename(new_path)}'")
+                    try:
+                self.app.view.set_status
+            except Exception as e:
+                print(f"[DEBUG] Could not update status: {e}")
+                return
+            self.app.view.set_status(f"Renamed '{os.path.basename(old_path)}' to '{os.path.basename(new_path)}'")
                     track_data['exists'] = True
                 except Exception as e:
                     messagebox.showerror("Rename Failed", f"Could not rename file:\n{old_path}\n\nError: {e}")
-                    self.app.set_status("File rename failed.")
+                    try:
+                self.app.view.set_status
+            except Exception as e:
+                print(f"[DEBUG] Could not update status: {e}")
+                return
+            self.app.view.set_status("File rename failed.")
                     track_data['exists'] = os.path.exists(old_path)
                     self.update_track_display(iid, track_data)
                     return
             else:
-                self.app.set_status(f"Updated non-existent playlist entry path to '{os.path.basename(new_path)}'")
+                try:
+                self.app.view.set_status
+            except Exception as e:
+                print(f"[DEBUG] Could not update status: {e}")
+                return
+            self.app.view.set_status(f"Updated non-existent playlist entry path to '{os.path.basename(new_path)}'")
             track_data['path'] = new_path
             if track_data.get('title') == os.path.splitext(os.path.basename(old_path))[0]:
                 track_data['title'] = os.path.splitext(os.path.basename(new_path))[0]
@@ -840,7 +1034,12 @@ class PlaylistTab(ttk.Frame):
             self.mark_dirty()
         except Exception as e:
             messagebox.showerror("Rename Failed", f"Could not update playlist entry:\n{old_path}\n\nError: {e}")
-            self.app.set_status("File rename failed.")
+            try:
+                self.app.view.set_status
+            except Exception as e:
+                print(f"[DEBUG] Could not update status: {e}")
+                return
+            self.app.view.set_status("File rename failed.")
             track_data['exists'] = os.path.exists(old_path)
             self.update_track_display(iid, track_data)
 
@@ -873,7 +1072,12 @@ class PlaylistTab(ttk.Frame):
         """Move the new file from macro_output to replace the original, then delete macro_output."""
         selected_iids = self.get_selected_item_ids()
         if not selected_iids:
-            self.app.set_status("No track selected for macro move.")
+            try:
+                self.app.view.set_status
+            except Exception as e:
+                print(f"[DEBUG] Could not update status: {e}")
+                return
+            self.app.view.set_status("No track selected for macro move.")
             return
         if len(selected_iids) > 1:
             messagebox.showinfo("Macro Output Move", "Please select only one track.")
@@ -904,7 +1108,12 @@ class PlaylistTab(ttk.Frame):
             shutil.move(macro_path, old_path)
             # Remove macro_output folder
             shutil.rmtree(macro_dir)
-            self.app.set_status(f"Replaced {os.path.basename(old_path)} with macro output and deleted macro_output.")
+            try:
+                self.app.view.set_status
+            except Exception as e:
+                print(f"[DEBUG] Could not update status: {e}")
+                return
+            self.app.view.set_status(f"Replaced {os.path.basename(old_path)} with macro output and deleted macro_output.")
             # Reload metadata for this track
             meta = load_audio_metadata(old_path)
             for key in ['artist', 'title', 'album', 'genre', 'tracknumber', 'duration', 'bitrate', 'format', 'exists', 'path']:
@@ -915,7 +1124,12 @@ class PlaylistTab(ttk.Frame):
         except Exception as e:
             logging.error(f"[MacroOutputMove] Error: {e}")
             messagebox.showerror("Macro Output Move", f"Failed to move macro output: {e}")
-            self.app.set_status("Macro output move failed.")
+            try:
+                self.app.view.set_status
+            except Exception as e:
+                print(f"[DEBUG] Could not update status: {e}")
+                return
+            self.app.view.set_status("Macro output move failed.")
 
     def context_check_existence(self):
         """Re-checks existence for selected files."""
@@ -928,53 +1142,208 @@ class PlaylistTab(ttk.Frame):
             track_data['exists'] = meta.get('exists', False)
             track_data['duration'] = meta.get('duration', 0)
             self.update_track_display(iid, track_data)
-        self.app.set_status("Checked file existence and duration.")
+        try:
+                self.app.view.set_status
+            except Exception as e:
+                print(f"[DEBUG] Could not update status: {e}")
+                return
+            self.app.view.set_status("Checked file existence and duration.")
 
+    def context_calculate_start_times(self):
+        from dialog_windows import StartTimeDialog
+        import logging
+        logger = logging.getLogger(__name__)
+        selected_iid = self.get_selected_item_id()
+        if not selected_iid:
+            messagebox.showinfo("No Selection", "Please select a row to set the start time.")
+            return
+        dialog = StartTimeDialog(self, title="Set Playlist Start Time")
+        if dialog.result is None:
+            logger.info("Start time calculation cancelled.")
+            return
+        start_day, start_time = dialog.result
+        import datetime
+        # Find index of selected track
+        track_indices = [i for i, iid in enumerate(self.tree.get_children()) if iid == selected_iid]
+        if not track_indices:
+            logger.error("Could not find selected track index.")
+            return
+        anchor_index = track_indices[0]
+        self._start_time_anchor = (anchor_index, start_day, start_time)
+        self.recalculate_start_times()
+        self.mark_dirty(True)
+        logger.info("Start times calculated and updated.")
+
+    def recalculate_start_times(self):
+        """
+        Recalculate all start times based on the anchor (row_index, day, time).
+        If no anchor is set, clears all start times.
+        """
+        import datetime
+        from utils import format_start_time
+        logger = logging.getLogger(__name__)
+        anchor = self._start_time_anchor
+        if anchor is None:
+            # Clear all start times
+            for track in self._track_data:
+                track[START_TIME_COLUMN] = ''
+            self.refresh_display()
+            return
+        anchor_index, start_day, start_time = anchor
+        # Get anchor date from day string
+        from dialog_windows import StartTimeDialog
+        anchor_date = StartTimeDialog.get_next_weekday_date_static(start_day)
+        anchor_dt = datetime.datetime.combine(anchor_date, start_time)
+        # Calculate backwards
+        curr_time = anchor_dt
+        for i in range(anchor_index, -1, -1):
+            self._track_data[i][START_TIME_COLUMN] = format_start_time(curr_time)
+            dur = self._track_data[i].get('duration')
+            dur = dur if isinstance(dur, (int, float)) and dur is not None else 0
+            curr_time -= datetime.timedelta(seconds=dur)
+        # Calculate forwards
+        curr_time = anchor_dt
+        for i in range(anchor_index + 1, len(self._track_data)):
+            dur = self._track_data[i-1].get('duration')
+            dur = dur if isinstance(dur, (int, float)) and dur is not None else 0
+            curr_time += datetime.timedelta(seconds=dur)
+            self._track_data[i][START_TIME_COLUMN] = format_start_time(curr_time)
+        self.refresh_display()
 
     # --- Data Loading/Saving ---
 
     def load_playlist_from_file(self, filepath):
         """Loads tracks from an M3U/M3U8 file and refreshes all metadata."""
         try:
-            with open(filepath, 'r', encoding=M3U_ENCODING) as f:
-                lines = f.readlines()
-            # --- Optimization: batch metadata loading ---
+            print(f"DEBUG: Loading playlist from {filepath}")
+            logging.info(f"Loading playlist from {filepath}")
+            
+            # First check if file exists
+            if not os.path.exists(filepath):
+                print(f"DEBUG: Playlist file does not exist: {filepath}")
+                logging.error(f"Playlist file does not exist: {filepath}")
+                messagebox.showerror("File Not Found", f"The playlist file does not exist:\n{filepath}")
+                return False
+                
+            # Get the directory of the playlist file to resolve relative paths
+            playlist_dir = os.path.dirname(os.path.abspath(filepath))
+            print(f"DEBUG: Playlist directory: {playlist_dir}")
+            
+            # Read the file with proper error handling for encoding issues
+            try:
+                with open(filepath, 'r', encoding=M3U_ENCODING) as f:
+                    lines = f.readlines()
+                print(f"DEBUG: Read {len(lines)} lines from playlist")
+            except UnicodeDecodeError:
+                # Try with different encodings if the default fails
+                try:
+                    with open(filepath, 'r', encoding='latin-1') as f:
+                        lines = f.readlines()
+                    print(f"DEBUG: Read {len(lines)} lines using latin-1 encoding")
+                except Exception as e:
+                    print(f"DEBUG: Failed to read with latin-1 encoding: {e}")
+                    raise
+            except Exception as e:
+                print(f"DEBUG: Error reading playlist file: {e}")
+                raise
+            
+            # --- Process playlist lines ---
             track_paths = []
-            for line in lines:
-                line = line.strip()
-                # Only treat as a track if it is NOT blank, does NOT start with '#', and does NOT contain any non-path characters like ':' only as drive letter
-                # For M3U, valid track lines should NOT start with '#', and should be valid file paths
-                if not line:
+            current_extinf = None
+            
+            for line_num, line in enumerate(lines):
+                try:
+                    line = line.strip()
+                    if not line:
+                        continue
+                        
+                    # Handle EXTINF lines (store for next track)
+                    if line.startswith('#EXTINF:'):
+                        current_extinf = line
+                        continue
+                        
+                    # Skip other comment/directive lines
+                    if line.startswith('#'):
+                        continue
+                    
+                    # Fix common issues with paths
+                    # Replace backslashes with forward slashes for consistency
+                    line = line.replace('\\', '/')
+                    
+                    # Handle relative paths by joining with playlist directory
+                    if not os.path.isabs(line):
+                        # This is a relative path, make it absolute
+                        abs_path = os.path.normpath(os.path.join(playlist_dir, line))
+                        print(f"DEBUG: Converting relative path '{line}' to absolute: '{abs_path}'")
+                        line = abs_path
+                    
+                    track_paths.append(line)
+                    print(f"DEBUG: Found track path ({line_num+1}): {line}")
+                    
+                except Exception as e:
+                    print(f"DEBUG: Error processing line {line_num+1}: {e}")
+                    logging.error(f"Error processing line {line_num+1}: {e}")
+                    # Continue with next line instead of failing completely
                     continue
-                if line.startswith('#'):
-                    continue
-                # Defensive: skip if line is literally '#EXTM3U' or '#EXTINF' or any other common header
-                if line.upper() == '#EXTM3U' or line.upper().startswith('#EXTINF'):
-                    continue
-                # Additional: skip if the line does not look like a valid path (e.g. not containing a drive letter or path separator)
-                # Accept only lines that look like valid Windows paths
-                if not (':' in line or '\\' in line or '/' in line):
-                    continue
-                track_paths.append(line)
-            # Use threads to load metadata in parallel for speedup
-            import concurrent.futures
+            
+            print(f"DEBUG: Found {len(track_paths)} track paths in playlist")
+            if not track_paths:
+                print("DEBUG: No valid track paths found in playlist")
+                logging.warning(f"No valid track paths found in playlist: {filepath}")
+                messagebox.showwarning("Empty Playlist", f"No valid tracks found in playlist file:\n{filepath}")
+                return False
+            
+            # --- Load metadata for tracks ---
             new_tracks = []
-            def safe_load(path):
-                return load_audio_metadata(path)
-            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-                results = list(executor.map(safe_load, track_paths))
-            for meta, orig_path in zip(results, track_paths):
-                # Accept if duration, or if a path was provided (even if no title in metadata)
-                if meta.get('duration') or orig_path:
-                    new_tracks.append(meta)
+            
+            # Process tracks one by one for better error handling
+            for i, path in enumerate(track_paths):
+                try:
+                    print(f"DEBUG: Loading metadata for track {i+1}/{len(track_paths)}: {path}")
+                    metadata = load_audio_metadata(path)
+                    print(f"DEBUG: Loaded metadata: exists={metadata['exists']}, title={metadata['title']}")
+                    new_tracks.append(metadata)
+                except Exception as e:
+                    print(f"DEBUG: Error loading metadata for {path}: {e}")
+                    logging.error(f"Error loading metadata for {path}: {e}")
+                    # Add minimal metadata so the track still appears
+                    minimal_metadata = {
+                        'path': path,
+                        'exists': False,
+                        'title': os.path.basename(path),
+                        'artist': ' ',
+                        'album': 'Unknown Album',
+                        'duration': 0
+                    }
+                    new_tracks.append(minimal_metadata)
+            
+            print(f"DEBUG: Loaded metadata for {len(new_tracks)} tracks")
+            logging.info(f"Loaded {len(new_tracks)} tracks from playlist")
+            
+            # Update the track data and refresh display
             self._track_data = new_tracks
+            print(f"DEBUG: Set _track_data with {len(self._track_data)} tracks")
+            
+            # Force a refresh of the display
             self.refresh_display()
+            print(f"DEBUG: Called refresh_display")
+            
+            # Update UI state
             self.is_dirty = False
             self.update_tab_title()
+            self.filepath = filepath  # Make sure filepath is set
+            
+            # Handle the status update safely
+            self._safe_set_status(f"Loaded {len(new_tracks)} tracks from playlist")
+            
             return True
+            
         except Exception as e:
             import traceback
-            logging.error(f"[PLAYLIST][ERROR] Failed to load playlist from {filepath}: {e}\n{traceback.format_exc()}")
+            error_trace = traceback.format_exc()
+            print(f"DEBUG: Error loading playlist: {e}\n{error_trace}")
+            logging.error(f"[PLAYLIST][ERROR] Failed to load playlist from {filepath}: {e}\n{error_trace}")
+            messagebox.showerror("Load Error", f"Failed to load playlist:\n{filepath}\n\nError: {str(e)}")
             return False
 
 
@@ -989,10 +1358,20 @@ class PlaylistTab(ttk.Frame):
                 initialfile=os.path.basename(self.filepath) if self.filepath else "playlist.m3u8"
             )
             if not target_path:
-                self.app.set_status("Save cancelled.")
+                try:
+                self.app.view.set_status
+            except Exception as e:
+                print(f"[DEBUG] Could not update status: {e}")
+                return
+            self.app.view.set_status("Save cancelled.")
                 return False # Indicate save was cancelled
 
-        self.app.set_status(f"Saving playlist: {os.path.basename(target_path)}...")
+        try:
+                self.app.view.set_status
+            except Exception as e:
+                print(f"[DEBUG] Could not update status: {e}")
+                return
+            self.app.view.set_status(f"Saving playlist: {os.path.basename(target_path)}...")
         try:
             playlist_dir = os.path.dirname(target_path)
             os.makedirs(playlist_dir, exist_ok=True) # Ensure directory exists
@@ -1015,11 +1394,21 @@ class PlaylistTab(ttk.Frame):
             self.filepath = target_path # Update file path if saved successfully
             self.mark_dirty(False)
             self.update_tab_title() # Update title to remove '*' and reflect new name if 'Save As'
-            self.app.set_status(f"Playlist saved: {os.path.basename(target_path)}")
+            try:
+                self.app.view.set_status
+            except Exception as e:
+                print(f"[DEBUG] Could not update status: {e}")
+                return
+            self.app.view.set_status(f"Playlist saved: {os.path.basename(target_path)}")
             return True
 
         except Exception as e:
-            self.app.set_status(f"Error saving playlist {os.path.basename(target_path)}: {e}")
+            try:
+                self.app.view.set_status
+            except Exception as e:
+                print(f"[DEBUG] Could not update status: {e}")
+                return
+            self.app.view.set_status(f"Error saving playlist {os.path.basename(target_path)}: {e}")
             messagebox.showerror("Save Error", f"Could not save playlist to:\n{target_path}\n\nError: {e}")
             return False
 
@@ -1028,13 +1417,13 @@ class PlaylistTab(ttk.Frame):
 
     def setup_columns(self):
         """Sets up the Treeview columns based on CUSTOM_COLUMNS."""
-        col_widths = {'#': 40, INDICATOR_COLUMN: 18, 'Artist': 150, 'Title': 250, 'Album': 150, 'Genre': 100, 'TrackNumber': 40, 'Duration': 60, 'Path': 300, 'Exists': 50, 'Bitrate':60, 'Format': 60}
-        col_anchors = {'#': 'e', INDICATOR_COLUMN: 'center', 'TrackNumber': 'e', 'Duration': 'center', 'Exists': 'center', 'Bitrate':'e'}
+        col_widths = {'#': 40, START_TIME_COLUMN: 120, INDICATOR_COLUMN: 18, 'Artist': 150, 'Title': 250, 'Album': 150, 'Genre': 100, 'TrackNumber': 40, 'Duration': 60, 'Path': 300, 'Exists': 50, 'Bitrate':60, 'Format': 60}
+        col_anchors = {'#': 'e', START_TIME_COLUMN: 'center', INDICATOR_COLUMN: 'center', 'TrackNumber': 'e', 'Duration': 'center', 'Exists': 'center', 'Bitrate':'e'}
         saved_widths = getattr(self.app, 'get_column_widths', lambda: None)() or {}
         for col in CUSTOM_COLUMNS:
             width = saved_widths.get(col, col_widths.get(col, 100))
             self.tree.heading(col, text=col)
-            self.tree.column(col, width=width, anchor=col_anchors.get(col, 'w'), stretch=tk.NO if col in ['#', INDICATOR_COLUMN, 'Duration','Exists','TrackNumber','Bitrate','Format'] else tk.YES)
+            self.tree.column(col, width=width, anchor=col_anchors.get(col, 'w'), stretch=tk.NO if col in ['#', START_TIME_COLUMN, INDICATOR_COLUMN, 'Duration','Exists','TrackNumber','Bitrate','Format'] else tk.YES)
         self.update_columns(self.visible_columns)
 
     def update_columns(self, visible_column_ids):
@@ -1073,7 +1462,12 @@ class PlaylistTab(ttk.Frame):
     def find_next(self, event=None, reverse=False):
         query = self.find_entry.get().strip().lower()
         if not query:
-            self.app.set_status("Enter search text.")
+            try:
+                self.app.view.set_status
+            except Exception as e:
+                print(f"[DEBUG] Could not update status: {e}")
+                return
+            self.app.view.set_status("Enter search text.")
             self.find_count_var.set("")
             return
         matches = []
@@ -1082,7 +1476,12 @@ class PlaylistTab(ttk.Frame):
             if any(query in str(v).lower() for v in values):
                 matches.append(iid)
         if not matches:
-            self.app.set_status("No matches found.")
+            try:
+                self.app.view.set_status
+            except Exception as e:
+                print(f"[DEBUG] Could not update status: {e}")
+                return
+            self.app.view.set_status("No matches found.")
             self.find_count_var.set("0 found")
             return
         # Cycle through matches
@@ -1094,7 +1493,12 @@ class PlaylistTab(ttk.Frame):
             next_idx = 0
         self.tree.selection_set(matches[next_idx])
         self.tree.see(matches[next_idx])
-        self.app.set_status(f"Found {len(matches)} match(es). Showing {next_idx+1} of {len(matches)}.")
+        try:
+                self.app.view.set_status
+            except Exception as e:
+                print(f"[DEBUG] Could not update status: {e}")
+                return
+            self.app.view.set_status(f"Found {len(matches)} match(es). Showing {next_idx+1} of {len(matches)}.")
         self.find_count_var.set(f"{len(matches)} found")
 
     def clear_find(self):
@@ -1106,7 +1510,12 @@ class PlaylistTab(ttk.Frame):
     def paste_after_selected(self):
         """Paste clipboard tracks after the currently selected track(s)."""
         if not self.app.clipboard:
-            self.app.set_status("Clipboard is empty.")
+            try:
+                self.app.view.set_status
+            except Exception as e:
+                print(f"[DEBUG] Could not update status: {e}")
+                return
+            self.app.view.set_status("Clipboard is empty.")
             return
         selected = list(self.tree.selection())
         if selected:
@@ -1117,22 +1526,25 @@ class PlaylistTab(ttk.Frame):
         else:
             # No selection, append at end
             insert_index = len(self._track_data)
-        newly_added_iids = []
         for track in self.app.clipboard:
-            # Create a deep copy of the track data to ensure it's unique
             track_copy = track.copy()
             self._track_data.insert(insert_index, track_copy)
             values = [self.get_formatted_value(track_copy, col) for col in CUSTOM_COLUMNS]
             tag = "missing" if not track_copy.get('exists', True) else "found"
             iid = self.tree.insert("", insert_index, values=values, tags=(tag,))
             self._iid_map[iid] = track_copy
-            newly_added_iids.append(iid)
             insert_index += 1
         self.mark_dirty()
+        self.recalculate_start_times()
         self._auto_update_row_numbers()  # Force row number update after paste
         self.tree.selection_set(self.tree.get_children()[insert_index - len(self.app.clipboard):insert_index])
         self.tree.see(self.tree.get_children()[insert_index - 1])
-        self.app.set_status(f"Pasted {len(self.app.clipboard)} track(s) after selection.")
+        try:
+                self.app.view.set_status
+            except Exception as e:
+                print(f"[DEBUG] Could not update status: {e}")
+                return
+            self.app.view.set_status(f"Pasted {len(self.app.clipboard)} track(s) after selection.")
 
     def _auto_update_row_numbers(self, event=None):
         # This ensures that the '#' column is always up-to-date after any change
@@ -1255,6 +1667,7 @@ class PlaylistTab(ttk.Frame):
                 self.tree.selection_set(to_select)
                 self.tree.see(to_select[0])
             self.mark_dirty()
+            self.recalculate_start_times()
         self._dragged_iid = None
         self._dragged_index = None
         self._drag_dragged_iids = None
@@ -1281,6 +1694,7 @@ class PlaylistTab(ttk.Frame):
                 self._track_data.insert(insert_index + i, track)
             self.refresh_display(keep_selection=False)
             self.mark_dirty()
+            self.recalculate_start_times()
             # Remove hover highlight
             if self._dnd_hover_iid:
                 tags = list(self.tree.item(self._dnd_hover_iid, 'tags'))
@@ -1364,45 +1778,64 @@ class PlaylistTab(ttk.Frame):
         if not hasattr(self, 'tree'):
             return
         cur_widths = {col: self.tree.column(col, 'width') for col in CUSTOM_COLUMNS}
-        if cur_widths != getattr(self, '_last_column_widths', {}):
-            self._last_column_widths = cur_widths.copy()
-            if hasattr(self.app, 'on_column_widths_changed'):
-                self.app.on_column_widths_changed(cur_widths)
 
-    def update_track_metadata(self, iid, new_metadata):
-        """Update the metadata for a track and save changes to the audio file.
-        Also updates any duplicate tracks with the same file path."""
-        import logging
-        from metadata_utils import save_audio_metadata, load_audio_metadata
-        track_data = self.get_track_data_by_iid(iid)
-        if not track_data or not track_data.get('path'):
-            messagebox.showerror("Metadata Update Error", "Track data or path is missing.")
-            return
-        filepath = track_data['path']
-        # Save new metadata to file
-        success, error = save_audio_metadata(filepath, new_metadata)
-        if not success:
-            logging.error(f"[METADATA][ERROR] Failed to save metadata for {filepath}: {error}")
-            messagebox.showerror("Metadata Save Error", f"Could not save metadata to file:\n{filepath}\n\nError: {error}")
-            return
-        # Reload metadata from file to ensure consistency
-        updated_meta = load_audio_metadata(filepath)
-        
-        # Find all tracks with the same file path and update them all
-        updated_count = 0
-        for tree_iid in self.tree.get_children():
-            current_track = self.get_track_data_by_iid(tree_iid)
-            if current_track and current_track.get('path') == filepath:
-                # Update this track's metadata
-                for key in ['artist', 'title', 'album', 'genre', 'tracknumber', 'duration', 'bitrate', 'format', 'exists', 'path']:
-                    current_track[key] = updated_meta.get(key, current_track.get(key))
-                self.update_track_display(tree_iid, current_track)
-                updated_count += 1
-        
-        if updated_count > 1:
-            self.app.set_status(f"Metadata updated for {updated_count} instances of: {os.path.basename(filepath)}")
+def _hide_path_tooltip(self):
+    if self._path_tooltip:
+        self._path_tooltip.destroy()
+        self._path_tooltip = None
+        self._path_tooltip_label = None
+
+def _on_tree_leave(self, event):
+    self._hide_path_tooltip()
+
+def _on_column_resize(self, event=None):
+    # Save column widths after user resizes
+    if not hasattr(self, 'tree'):
+        return
+    cur_widths = {col: self.tree.column(col, 'width') for col in CUSTOM_COLUMNS}
+    if cur_widths != getattr(self, '_last_column_widths', {}):
+        self._last_column_widths = cur_widths.copy()
+        if hasattr(self.app, 'on_column_widths_changed'):
+            self.app.on_column_widths_changed(cur_widths)
+
+def _safe_set_status(self, message):
+    """Safely update the status bar, handling cases where the app controller might not be fully initialized."""
+    try:
+        if hasattr(self.app, 'view') and self.app.view is not None:
+            self.app.view.set_status(message)
         else:
-            self.app.set_status(f"Metadata updated for: {os.path.basename(filepath)}")
-            
-        logging.info(f"[METADATA] Metadata updated for {updated_count} instances of: {filepath}")
-        self.mark_dirty()
+            print(f"[DEBUG] Status update (no view available): {message}")
+    except Exception as e:
+        print(f"[DEBUG] Could not update status: {e} - {message}")
+
+def update_track_metadata(self, iid, new_metadata):
+    """Update the metadata for a track and save changes to the audio file."""
+    track_data = self.get_track_data_by_iid(iid)
+    if not track_data:
+        return False
+    
+    filepath = track_data['path']
+    if not os.path.exists(filepath):
+        messagebox.showerror("File Not Found", f"Cannot update metadata for missing file:\n{filepath}")
+        return False
+    
+    # Update the file's metadata
+    from metadata_utils import save_audio_metadata
+    success = save_audio_metadata(filepath, new_metadata)
+    if not success:
+        messagebox.showerror("Metadata Error", f"Failed to update metadata for:\n{filepath}")
+        return False
+    
+    # Reload metadata from the file to ensure we have the actual saved values
+    updated_meta = load_audio_metadata(filepath)
+    
+    # Update our track data with the new metadata
+    for key in ['artist', 'title', 'album', 'genre', 'tracknumber', 'duration', 'bitrate', 'format', 'exists', 'path']:
+        track_data[key] = updated_meta.get(key, track_data.get(key))
+    self.update_track_display(iid, track_data)
+    self._safe_set_status(f"Metadata updated for: {os.path.basename(filepath)}")
+    logging.info(f"[METADATA] Metadata updated for: {filepath}")
+    # --- Force update of only this track in the treeview ---
+    self.update_track_display(iid, track_data)
+    self.mark_dirty() # Mark playlist as modified
+    return True
