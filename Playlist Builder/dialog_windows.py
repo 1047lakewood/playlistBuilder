@@ -185,3 +185,58 @@ class MetadataEditDialog(simpledialog.Dialog):
              self.result['__force_refresh_number'] = True
         else:
              self.result = None # Indicate failure
+
+
+class StartTimeDialog(simpledialog.Dialog):
+    def __init__(self, parent, title=None):
+        self.result = None
+        super().__init__(parent, title or "Set Playlist Start Time")
+
+    def body(self, master):
+        import datetime
+        days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        self.day_var = tk.StringVar(value=days[0])
+        self.time_var = tk.StringVar(value='12:00:00 PM')
+        row = 0
+        tk.Label(master, text="Day of Week:").grid(row=row, column=0, sticky='e', padx=5, pady=5)
+        day_menu = ttk.Combobox(master, textvariable=self.day_var, values=days, state='readonly')
+        day_menu.grid(row=row, column=1, padx=5, pady=5)
+        row += 1
+        tk.Label(master, text="Start Time (hh:mm:ss AM/PM):").grid(row=row, column=0, sticky='e', padx=5, pady=5)
+        time_entry = ttk.Entry(master, textvariable=self.time_var)
+        time_entry.grid(row=row, column=1, padx=5, pady=5)
+        return time_entry
+
+    def apply(self):
+        import datetime
+        try:
+            day = self.day_var.get()
+            time_str = self.time_var.get()
+            time_obj = datetime.datetime.strptime(time_str, '%I:%M:%S %p').time()
+            self.result = (day, time_obj)
+        except Exception as e:
+            messagebox.showerror("Invalid Input", f"Invalid time format: {e}", parent=self)
+            self.result = None
+
+    def get_next_weekday_date(self, day):
+        import datetime
+        days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        today = datetime.datetime(2025, 5, 5)  # Use fixed current date as per user context
+        today_weekday = today.weekday()  # Monday=0
+        target_weekday = days.index(day)
+        days_ahead = (target_weekday - today_weekday + 7) % 7
+        if days_ahead == 0:
+            days_ahead = 7  # Always go forward at least one week if today
+        return today + datetime.timedelta(days=days_ahead)
+
+    @staticmethod
+    def get_next_weekday_date_static(day):
+        import datetime
+        days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        today = datetime.datetime(2025, 5, 5)  # Use fixed current date as per user context
+        today_weekday = today.weekday()  # Monday=0
+        target_weekday = days.index(day)
+        days_ahead = (target_weekday - today_weekday + 7) % 7
+        if days_ahead == 0:
+            days_ahead = 7  # Always go forward at least one week if today
+        return today + datetime.timedelta(days=days_ahead)

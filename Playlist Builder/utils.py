@@ -28,6 +28,10 @@ def format_duration(seconds):
     except (TypeError, ValueError):
         return "--:--"
 
+def format_start_time(dt):
+    """Format datetime as 'Sun 02:42:57 PM'"""
+    return dt.strftime('%a %I:%M:%S %p')
+
 def open_file_location(filepath):
     """Opens the folder containing the file in the default file explorer, selecting the file if it exists."""
     logger = logging.getLogger(__name__)

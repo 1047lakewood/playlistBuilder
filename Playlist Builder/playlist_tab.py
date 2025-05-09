@@ -3,14 +3,15 @@ import shutil
 import subprocess
 import tkinter.font as tkfont
 from metadata_utils import load_audio_metadata
-from utils import (M3U_ENCODING, format_duration, open_file_location)
+from utils import (M3U_ENCODING, format_duration, open_file_location, format_start_time)
 import logging # Add logging import
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog, filedialog  # Ensure dialogs are imported
 
 # --- Add indicator column for artist directory match ---
+START_TIME_COLUMN = 'Start Time'
 INDICATOR_COLUMN = 'Intro'
-CUSTOM_COLUMNS = ['#', INDICATOR_COLUMN, 'Artist', 'Title', 'Duration', 'Path', 'Exists']
+CUSTOM_COLUMNS = ['#', START_TIME_COLUMN, INDICATOR_COLUMN, 'Artist', 'Title', 'Duration', 'Path', 'Exists']
 
 # --- Playlist Tab Class ---
 
@@ -28,8 +29,9 @@ class PlaylistTab(ttk.Frame):
         self.filepath = filepath
         self.is_dirty = False
         self._track_data = [] # List of dictionaries holding track metadata
-        self._iid_map = {} # Maps Treeview iid to track data dictionary (unique copy for each entry)
+        self._iid_map = {} # Maps Treeview iid to index in _track_data for quick lookup
         self.tab_display_name = title
+        self._start_time_anchor = None  # (row_index, day, time)
 
         # Use custom columns for display
         self.visible_columns = self.ensure_indicator_column(initial_columns if initial_columns else CUSTOM_COLUMNS)
@@ -161,6 +163,8 @@ class PlaylistTab(ttk.Frame):
         # self.context_menu.add_command(label="Rename Tab", command=self.context_rename_tab)
         self.context_menu.add_command(label="Check File Existence", command=self.context_check_existence)
         self.context_menu.add_command(label="Move Audacity Macro Output Here", command=self.context_move_macro_output)
+        self.context_menu.add_separator()
+        self.context_menu.add_command(label="Calculate Start Times", command=self.context_calculate_start_times)
 
         # Enable drag-and-drop for reordering playlist tracks in the treeview
         # --- Drag-and-drop row reordering (internal only) ---
@@ -194,6 +198,12 @@ class PlaylistTab(ttk.Frame):
 
     def ensure_indicator_column(self, columns):
         cols = list(columns)
+        if START_TIME_COLUMN not in cols:
+            if '#' in cols:
+                idx = cols.index('#') + 1
+                cols.insert(idx, START_TIME_COLUMN)
+            else:
+                cols.insert(0, START_TIME_COLUMN)
         if INDICATOR_COLUMN not in cols:
             if '#' in cols:
                 idx = cols.index('#') + 1
@@ -250,6 +260,8 @@ class PlaylistTab(ttk.Frame):
 
     def refresh_display(self, sort_col=None, reverse_sort=False, keep_selection=True, custom_data=None):
         selected_iids = self.tree.selection() if keep_selection else []
+        # Map selected track data for later re-selection
+        selected_track_ids = [self._iid_map[iid] for iid in selected_iids if iid in self._iid_map]
         for item in self.tree.get_children():
             self.tree.delete(item)
         self._iid_map.clear()
@@ -271,25 +283,28 @@ class PlaylistTab(ttk.Frame):
         for index, track_info in enumerate(display_data):
             artist = track_info.get('artist', '').strip().lower()
             artist_base = os.path.splitext(artist)[0]
-            # --- Update: match if any file in artist_dir startswith artist_base ---
             indicator = ''
             if artist_base:
                 for name in artist_files:
                     if name.startswith(artist_base):
                         indicator = '•'
                         break
-            values = [index + 1, indicator] + [self.get_formatted_value(track_info, col) for col in CUSTOM_COLUMNS if col not in ['#', INDICATOR_COLUMN]]
+            values = [index + 1, track_info.get(START_TIME_COLUMN, ''), indicator] + [self.get_formatted_value(track_info, col) for col in CUSTOM_COLUMNS if col not in ['#', START_TIME_COLUMN, INDICATOR_COLUMN]]
             tag = "missing" if not track_info.get('exists', True) else "found"
             iid = self.tree.insert("", tk.END, values=values, tags=(tag,))
-            # Create a new dictionary to ensure each entry has a unique reference, even for duplicate files
-            track_copy = dict(track_info)
-            self._iid_map[iid] = track_copy
-        if keep_selection:
+            self._iid_map[iid] = track_info
+        # Restore selection
+        if keep_selection and selected_track_ids:
+            new_selection = [iid for iid, track in self._iid_map.items() if track in selected_track_ids]
+            self.tree.selection_set(new_selection)
+        elif keep_selection:
             self.tree.selection_set(())
-            
+
     def get_formatted_value(self, track_data, column_id):
         if column_id == '#':
             return '' # Handled in refresh_display
+        elif column_id == START_TIME_COLUMN:
+            return track_data.get(START_TIME_COLUMN, '')
         elif column_id == 'Duration':
             return format_duration(track_data.get('duration'))
         elif column_id == 'Exists':
@@ -355,7 +370,7 @@ class PlaylistTab(ttk.Frame):
                     if name.startswith(artist_base):
                         indicator = '•'
                         break
-            values = [row_index + 1, indicator] + [self.get_formatted_value(track_data, col) for col in CUSTOM_COLUMNS if col not in ['#', INDICATOR_COLUMN]]
+            values = [row_index + 1, track_data.get(START_TIME_COLUMN, ''), indicator] + [self.get_formatted_value(track_data, col) for col in CUSTOM_COLUMNS if col not in ['#', START_TIME_COLUMN, INDICATOR_COLUMN]]
             tag = "missing" if not track_data.get('exists', True) else "found"
             self.tree.item(iid, values=values, tags=(tag,))
             # Update the map reference just in case the dict instance changed (it shouldn't if modified in place)
@@ -407,24 +422,15 @@ class PlaylistTab(ttk.Frame):
 
     def add_tracks(self, track_data_list):
         """Adds multiple tracks (list of dicts) to the internal data and refreshes view."""
-        # Each track gets its own dictionary instance, even if it's a duplicate file
+        # Could add checks for duplicates here if desired
         newly_added_iids = []
-        # --- Artist Directory Matching ---
-        artist_dir = None
-        if hasattr(self.app, 'current_settings'):
-            artist_dir = self.app.current_settings.get('artist_directory')
-        artist_files = []
-        if artist_dir and os.path.isdir(artist_dir):
-            try:
-                artist_files = [os.path.splitext(fname)[0].lower() for fname in os.listdir(artist_dir)]
-            except Exception:
-                pass
         for track_info in track_data_list:
              # Ensure necessary keys exist, even if blank
              track_info.setdefault('artist', ' ')
              track_info.setdefault('title', os.path.splitext(os.path.basename(track_info.get('path','')))[0] if track_info.get('path') else ' ')
              track_info.setdefault('path', None)
              track_info.setdefault('exists', os.path.exists(track_info['path']) if track_info['path'] else False)
+             track_info.setdefault(START_TIME_COLUMN, '')
              # Add other defaults...
 
              self._track_data.append(track_info)
@@ -439,6 +445,18 @@ class PlaylistTab(ttk.Frame):
                     if name.startswith(artist_base):
                         indicator = '•'
                         break
+             # Correctly align values with columns: [row number, indicator, ...]
+             row_number = len(self._track_data)  # 1-based index for new row
+             values = [row_number, track_info.get(START_TIME_COLUMN, ''), indicator] + [self.get_formatted_value(track_info, col) for col in CUSTOM_COLUMNS if col not in ['#', START_TIME_COLUMN, INDICATOR_COLUMN]]
+             tag = "missing" if not track_info.get('exists', True) else "found"
+             iid = self.tree.insert("", tk.END, values=values, tags=(tag,))
+             self._iid_map[iid] = track_info
+             newly_added_iids.append(iid)
+
+
+        # self.refresh_display(keep_selection=False) # Full refresh might be better for consistency
+        self.mark_dirty()
+        self.recalculate_start_times()
         # Optionally scroll to and select the newly added items
         if newly_added_iids:
              self.tree.selection_set(newly_added_iids)
@@ -521,6 +539,7 @@ class PlaylistTab(ttk.Frame):
 
         self.mark_dirty()
         self._auto_update_row_numbers()  # Force row number update after removal
+        self.recalculate_start_times()
         self.app.set_status(f"Removed {len(selected_iids)} track(s).")
 
     def move_selected_up(self):
@@ -563,6 +582,7 @@ class PlaylistTab(ttk.Frame):
 
          if moved_count > 0:
               self.mark_dirty()
+              self.recalculate_start_times()
               # Renumbering might be needed here if '#' column is critical
               # self.refresh_display(keep_selection=True) # Easier but resets view state
 
@@ -603,6 +623,7 @@ class PlaylistTab(ttk.Frame):
          
          if moved_count > 0:
              self.mark_dirty()
+             self.recalculate_start_times()
              # Renumbering might be needed here if '#' column is critical
              # self.refresh_display(keep_selection=True)
 
@@ -930,6 +951,66 @@ class PlaylistTab(ttk.Frame):
             self.update_track_display(iid, track_data)
         self.app.set_status("Checked file existence and duration.")
 
+    def context_calculate_start_times(self):
+        from dialog_windows import StartTimeDialog
+        import logging
+        logger = logging.getLogger(__name__)
+        selected_iid = self.get_selected_item_id()
+        if not selected_iid:
+            messagebox.showinfo("No Selection", "Please select a row to set the start time.")
+            return
+        dialog = StartTimeDialog(self, title="Set Playlist Start Time")
+        if dialog.result is None:
+            logger.info("Start time calculation cancelled.")
+            return
+        start_day, start_time = dialog.result
+        import datetime
+        # Find index of selected track
+        track_indices = [i for i, iid in enumerate(self.tree.get_children()) if iid == selected_iid]
+        if not track_indices:
+            logger.error("Could not find selected track index.")
+            return
+        anchor_index = track_indices[0]
+        self._start_time_anchor = (anchor_index, start_day, start_time)
+        self.recalculate_start_times()
+        self.mark_dirty(True)
+        logger.info("Start times calculated and updated.")
+
+    def recalculate_start_times(self):
+        """
+        Recalculate all start times based on the anchor (row_index, day, time).
+        If no anchor is set, clears all start times.
+        """
+        import datetime
+        from utils import format_start_time
+        logger = logging.getLogger(__name__)
+        anchor = self._start_time_anchor
+        if anchor is None:
+            # Clear all start times
+            for track in self._track_data:
+                track[START_TIME_COLUMN] = ''
+            self.refresh_display()
+            return
+        anchor_index, start_day, start_time = anchor
+        # Get anchor date from day string
+        from dialog_windows import StartTimeDialog
+        anchor_date = StartTimeDialog.get_next_weekday_date_static(start_day)
+        anchor_dt = datetime.datetime.combine(anchor_date, start_time)
+        # Calculate backwards
+        curr_time = anchor_dt
+        for i in range(anchor_index, -1, -1):
+            self._track_data[i][START_TIME_COLUMN] = format_start_time(curr_time)
+            dur = self._track_data[i].get('duration')
+            dur = dur if isinstance(dur, (int, float)) and dur is not None else 0
+            curr_time -= datetime.timedelta(seconds=dur)
+        # Calculate forwards
+        curr_time = anchor_dt
+        for i in range(anchor_index + 1, len(self._track_data)):
+            dur = self._track_data[i-1].get('duration')
+            dur = dur if isinstance(dur, (int, float)) and dur is not None else 0
+            curr_time += datetime.timedelta(seconds=dur)
+            self._track_data[i][START_TIME_COLUMN] = format_start_time(curr_time)
+        self.refresh_display()
 
     # --- Data Loading/Saving ---
 
@@ -1028,13 +1109,13 @@ class PlaylistTab(ttk.Frame):
 
     def setup_columns(self):
         """Sets up the Treeview columns based on CUSTOM_COLUMNS."""
-        col_widths = {'#': 40, INDICATOR_COLUMN: 18, 'Artist': 150, 'Title': 250, 'Album': 150, 'Genre': 100, 'TrackNumber': 40, 'Duration': 60, 'Path': 300, 'Exists': 50, 'Bitrate':60, 'Format': 60}
-        col_anchors = {'#': 'e', INDICATOR_COLUMN: 'center', 'TrackNumber': 'e', 'Duration': 'center', 'Exists': 'center', 'Bitrate':'e'}
+        col_widths = {'#': 40, START_TIME_COLUMN: 120, INDICATOR_COLUMN: 18, 'Artist': 150, 'Title': 250, 'Album': 150, 'Genre': 100, 'TrackNumber': 40, 'Duration': 60, 'Path': 300, 'Exists': 50, 'Bitrate':60, 'Format': 60}
+        col_anchors = {'#': 'e', START_TIME_COLUMN: 'center', INDICATOR_COLUMN: 'center', 'TrackNumber': 'e', 'Duration': 'center', 'Exists': 'center', 'Bitrate':'e'}
         saved_widths = getattr(self.app, 'get_column_widths', lambda: None)() or {}
         for col in CUSTOM_COLUMNS:
             width = saved_widths.get(col, col_widths.get(col, 100))
             self.tree.heading(col, text=col)
-            self.tree.column(col, width=width, anchor=col_anchors.get(col, 'w'), stretch=tk.NO if col in ['#', INDICATOR_COLUMN, 'Duration','Exists','TrackNumber','Bitrate','Format'] else tk.YES)
+            self.tree.column(col, width=width, anchor=col_anchors.get(col, 'w'), stretch=tk.NO if col in ['#', START_TIME_COLUMN, INDICATOR_COLUMN, 'Duration','Exists','TrackNumber','Bitrate','Format'] else tk.YES)
         self.update_columns(self.visible_columns)
 
     def update_columns(self, visible_column_ids):
@@ -1117,18 +1198,16 @@ class PlaylistTab(ttk.Frame):
         else:
             # No selection, append at end
             insert_index = len(self._track_data)
-        newly_added_iids = []
         for track in self.app.clipboard:
-            # Create a deep copy of the track data to ensure it's unique
             track_copy = track.copy()
             self._track_data.insert(insert_index, track_copy)
             values = [self.get_formatted_value(track_copy, col) for col in CUSTOM_COLUMNS]
             tag = "missing" if not track_copy.get('exists', True) else "found"
             iid = self.tree.insert("", insert_index, values=values, tags=(tag,))
             self._iid_map[iid] = track_copy
-            newly_added_iids.append(iid)
             insert_index += 1
         self.mark_dirty()
+        self.recalculate_start_times()
         self._auto_update_row_numbers()  # Force row number update after paste
         self.tree.selection_set(self.tree.get_children()[insert_index - len(self.app.clipboard):insert_index])
         self.tree.see(self.tree.get_children()[insert_index - 1])
@@ -1255,6 +1334,7 @@ class PlaylistTab(ttk.Frame):
                 self.tree.selection_set(to_select)
                 self.tree.see(to_select[0])
             self.mark_dirty()
+            self.recalculate_start_times()
         self._dragged_iid = None
         self._dragged_index = None
         self._drag_dragged_iids = None
@@ -1281,6 +1361,7 @@ class PlaylistTab(ttk.Frame):
                 self._track_data.insert(insert_index + i, track)
             self.refresh_display(keep_selection=False)
             self.mark_dirty()
+            self.recalculate_start_times()
             # Remove hover highlight
             if self._dnd_hover_iid:
                 tags = list(self.tree.item(self._dnd_hover_iid, 'tags'))
@@ -1370,8 +1451,7 @@ class PlaylistTab(ttk.Frame):
                 self.app.on_column_widths_changed(cur_widths)
 
     def update_track_metadata(self, iid, new_metadata):
-        """Update the metadata for a track and save changes to the audio file.
-        Also updates any duplicate tracks with the same file path."""
+        """Update the metadata for a track and save changes to the audio file."""
         import logging
         from metadata_utils import save_audio_metadata, load_audio_metadata
         track_data = self.get_track_data_by_iid(iid)
@@ -1387,22 +1467,11 @@ class PlaylistTab(ttk.Frame):
             return
         # Reload metadata from file to ensure consistency
         updated_meta = load_audio_metadata(filepath)
-        
-        # Find all tracks with the same file path and update them all
-        updated_count = 0
-        for tree_iid in self.tree.get_children():
-            current_track = self.get_track_data_by_iid(tree_iid)
-            if current_track and current_track.get('path') == filepath:
-                # Update this track's metadata
-                for key in ['artist', 'title', 'album', 'genre', 'tracknumber', 'duration', 'bitrate', 'format', 'exists', 'path']:
-                    current_track[key] = updated_meta.get(key, current_track.get(key))
-                self.update_track_display(tree_iid, current_track)
-                updated_count += 1
-        
-        if updated_count > 1:
-            self.app.set_status(f"Metadata updated for {updated_count} instances of: {os.path.basename(filepath)}")
-        else:
-            self.app.set_status(f"Metadata updated for: {os.path.basename(filepath)}")
-            
-        logging.info(f"[METADATA] Metadata updated for {updated_count} instances of: {filepath}")
-        self.mark_dirty()
+        # Update track_data in place
+        for key in ['artist', 'title', 'album', 'genre', 'tracknumber', 'duration', 'bitrate', 'format', 'exists', 'path']:
+            track_data[key] = updated_meta.get(key, track_data.get(key))
+        self.update_track_display(iid, track_data)
+        self.app.set_status(f"Metadata updated for: {os.path.basename(filepath)}")
+        logging.info(f"[METADATA] Metadata updated for: {filepath}")
+        # --- Force update of only this track in the treeview ---
+        self.update_track_display(iid, track_data)
