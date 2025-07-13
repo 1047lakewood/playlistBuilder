@@ -1,0 +1,27 @@
+{
+    "fonts": {
+        "base_size": 14,
+        "family": "Segoe UI"
+    },
+    "colors": {
+        "notebook_bg": "#f5f5f5",
+        "tab_bg": "#e8e8e8",
+        "tab_fg": "#606060",
+        "selected_tab_bg": "#ffffff",
+        "selected_tab_fg": "#303030",
+        "active_tab_bg": "#f0f0f0",
+        "active_tab_fg": "#404040"
+    },
+    "paths": {
+        "playlists_dir": "G:/Playlists/Erev playlists",
+        "intros_dir": "G:/Shiurim/IntrosCleanedUp"
+    },
+    "network": {
+        "api_url_base": "http://192.168.3.12:9000/?pass=bmas220"
+    },
+    "treeview": {
+        "row_height": 30,
+        "heading_padding_x": 5,
+        "heading_padding_y": 5
+    }
+}
