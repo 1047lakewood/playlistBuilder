@@ -1,0 +1,24 @@
+{
+    "Messages": [
+        {
+            "Text": "{artist}",
+            "Enabled": true,
+            "Message Time": 46,
+            "Scheduled": {
+                "Enabled": false,
+                "Days": [],
+                "Times": []
+            }
+        },
+        {
+            "Text": " ",
+            "Enabled": true,
+            "Message Time": 1,
+            "Scheduled": {
+                "Enabled": false,
+                "Days": [],
+                "Times": []
+            }
+        }
+    ]
+}

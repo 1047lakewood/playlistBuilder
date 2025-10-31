@@ -1,0 +1,1 @@
+readAllPlaylists "G:\Playlists\Erev Playlists"

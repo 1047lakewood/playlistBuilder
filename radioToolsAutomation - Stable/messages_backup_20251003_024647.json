@@ -1,0 +1,245 @@
+{
+    "Messages": [
+        {
+            "Text": "{artist}",
+            "Enabled": true,
+            "Message Time": 40,
+            "Scheduled": {
+                "Enabled": false,
+                "Days": [],
+                "Times": []
+            }
+        },
+        {
+            "Text": "Lizchus that Ahron Meir should find a shidduch",
+            "Enabled": true,
+            "Message Time": 20,
+            "Scheduled": {
+                "Enabled": true,
+                "Days": [
+                    "Sunday",
+                    "Monday",
+                    "Friday"
+                ],
+                "Times": []
+            }
+        },
+        {
+            "Text": "Bechol koreinu eilav",
+            "Enabled": false,
+            "Message Time": 2,
+            "Scheduled": {
+                "Enabled": false,
+                "Days": [],
+                "Times": []
+            }
+        },
+        {
+            "Text": "Ein Od Milvado",
+            "Enabled": false,
+            "Message Time": 5,
+            "Scheduled": {
+                "Enabled": true,
+                "Days": [
+                    "Monday"
+                ],
+                "Times": []
+            }
+        },
+        {
+            "Text": "Bagel Nosh",
+            "Enabled": false,
+            "Message Time": 15,
+            "Scheduled": {
+                "Enabled": true,
+                "Days": [
+                    "Monday",
+                    "Tuesday"
+                ],
+                "Times": []
+            }
+        },
+        {
+            "Text": "EZ Pekalach 732.674.9948",
+            "Enabled": true,
+            "Message Time": 30,
+            "Scheduled": {
+                "Enabled": true,
+                "Days": [
+                    "Sunday",
+                    "Monday",
+                    "Tuesday",
+                    "Wednesday",
+                    "Thursday",
+                    "Friday"
+                ],
+                "Times": [
+                    {
+                        "hour": 13
+                    },
+                    {
+                        "hour": 14
+                    }
+                ]
+            }
+        },
+        {
+            "Text": "SPONSOR 732.901.7777",
+            "Enabled": true,
+            "Message Time": 35,
+            "Scheduled": {
+                "Enabled": true,
+                "Days": [
+                    "Sunday",
+                    "Monday",
+                    "Tuesday",
+                    "Wednesday",
+                    "Thursday",
+                    "Friday",
+                    "Saturday"
+                ],
+                "Times": [
+                    {
+                        "hour": 7
+                    },
+                    {
+                        "hour": 9
+                    },
+                    {
+                        "hour": 11
+                    },
+                    {
+                        "hour": 16
+                    },
+                    {
+                        "hour": 17
+                    },
+                    {
+                        "hour": 18
+                    },
+                    {
+                        "hour": 19
+                    },
+                    {
+                        "hour": 21
+                    }
+                ]
+            }
+        },
+        {
+            "Text": "ACE RESTORATION 732.364.9123",
+            "Enabled": true,
+            "Message Time": 20,
+            "Scheduled": {
+                "Enabled": true,
+                "Days": [
+                    "Sunday",
+                    "Monday",
+                    "Tuesday",
+                    "Wednesday",
+                    "Thursday",
+                    "Friday"
+                ],
+                "Times": [
+                    {
+                        "hour": 8
+                    },
+                    {
+                        "hour": 10
+                    },
+                    {
+                        "hour": 12
+                    },
+                    {
+                        "hour": 13
+                    },
+                    {
+                        "hour": 15
+                    },
+                    {
+                        "hour": 20
+                    },
+                    {
+                        "hour": 22
+                    }
+                ]
+            }
+        }
+    ],
+    "Whitelist": [
+        "Charlie Harary"
+    ],
+    "Blacklist": [
+        "R' Michel Twersky",
+        "R. Michel Twerski"
+    ],
+    "settings": {
+        "rds": {
+            "ip": "50.208.125.83",
+            "port": 10001,
+            "now_playing_xml": "G:/To_RDS/nowplaying_test.xml",
+            "default_message": "732.901.7777 to SUPPORT and hear this program!"
+        },
+        "intro_loader": {
+            "now_playing_xml": "G:\\To_RDS\\nowplaying_test.xml",
+            "mp3_directory": "G:\\Shiurim\\introsCleanedUp",
+            "missing_artists_log": "G:\\Misc\\Dev\\CombinedRDSApp\\missing_artists.log",
+            "schedule_url": "http://192.168.3.11:9000/?pass=bmas220&action=schedule&type=run&id=TBACFNBGJKOMETDYSQYR"
+        },
+        "ad_inserter": {
+            "insertion_url": "http://localhost:9000/?pass=bmas220&action=schedule&type=run&id=IZVRTKXNHAHFUHXVPCGY",
+            "instant_url": "",
+            "output_mp3": "G:/Misc/Sponsorships/autoAd.mp3"
+        }
+    },
+    "Ads": [
+        {
+            "Name": "New Adfgdfg",
+            "Enabled": true,
+            "Scheduled": false,
+            "PlayCount": 22,
+            "LastPlayed": "2025-09-30T19:41:11.329307",
+            "MP3File": "G:/Misc/Radio Info/1047 Station ID.mp3",
+            "Days": [],
+            "Times": []
+        },
+        {
+            "Name": "New Ad",
+            "Enabled": true,
+            "Scheduled": false,
+            "PlayCount": 22,
+            "LastPlayed": "2025-09-30T19:41:11.348397",
+            "MP3File": "G:/Misc/Radio Info/r meilich Ba'erev Tochlu Matzos.mp3",
+            "Days": [],
+            "Times": []
+        },
+        {
+            "Name": "New Ad3",
+            "Enabled": false,
+            "Scheduled": true,
+            "MP3File": "",
+            "Days": [
+                "Monday"
+            ],
+            "Times": [
+                {
+                    "hour": 13
+                },
+                {
+                    "hour": 14
+                },
+                {
+                    "hour": 15
+                }
+            ]
+        },
+        {
+            "Name": "Test Ad",
+            "Enabled": true,
+            "Scheduled": false,
+            "MP3File": "test.mp3",
+            "Days": [],
+            "Times": []
+        }
+    ]
+}
