@@ -14,7 +14,8 @@
     },
     "paths": {
         "playlists_dir": "G:/Playlists/Erev playlists",
-        "intros_dir": "G:/Shiurim/IntrosCleanedUp"
+        "intros_dir": "G:/Shiurim/IntrosCleanedUp",
+        "deployment_dir": "C:/Users/Admin/Desktop/Work/Playlist Builder 2"
     },
     "network": {
         "api_url_base": "http://192.168.3.11:9000/?pass=bmas220"
