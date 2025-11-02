@@ -18,8 +18,9 @@ import json
 import logging
 import os
 import re
+import shutil
 import tkinter as tk
-from tkinter import ttk, messagebox, colorchooser
+from tkinter import ttk, messagebox, colorchooser, filedialog
 from tkinter import font as tkfont
 from copy import deepcopy
 
@@ -85,6 +86,7 @@ class SettingsDialog(tk.Toplevel):
     CATEGORY_COLORS = "Colors"
     CATEGORY_TREEVIEW = "Treeview"
     CATEGORY_PATHS_NET = "Paths & Network"
+    CATEGORY_MIGRATION = "Migration"
 
     def __init__(self, master: tk.Tk, on_apply=None):
         super().__init__(master)
@@ -111,7 +113,7 @@ class SettingsDialog(tk.Toplevel):
 
         # Left: category list
         self.category_list = tk.Listbox(paned, exportselection=False)
-        for cat in (self.CATEGORY_FONTS, self.CATEGORY_COLORS, self.CATEGORY_TREEVIEW, self.CATEGORY_PATHS_NET):
+        for cat in (self.CATEGORY_FONTS, self.CATEGORY_COLORS, self.CATEGORY_TREEVIEW, self.CATEGORY_PATHS_NET, self.CATEGORY_MIGRATION):
             self.category_list.insert(tk.END, cat)
         self.category_list.bind("<<ListboxSelect>>", self._on_category_selected)
         paned.add(self.category_list, weight=1)
@@ -163,6 +165,8 @@ class SettingsDialog(tk.Toplevel):
             self._build_treeview_editor()
         elif category == self.CATEGORY_PATHS_NET:
             self._build_paths_network_editor()
+        elif category == self.CATEGORY_MIGRATION:
+            self._build_migration_editor()
 
     # -----------------
     # Editor Builders
@@ -251,6 +255,34 @@ class SettingsDialog(tk.Toplevel):
 
         frm.columnconfigure(1, weight=1)
 
+    def _build_migration_editor(self):
+        frm = ttk.Frame(self.editor_frame_container)
+        frm.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        # Deployment path field
+        deployment_dir = self._get_setting_var(("paths", "deployment_dir"), tk.StringVar, default=r"g:\work\playlist builder 2")
+        
+        ttk.Label(frm, text="Deployment Path:").grid(row=0, column=0, sticky=tk.W, pady=5, padx=5)
+        entry = ttk.Entry(frm, textvariable=deployment_dir, width=50)
+        entry.grid(row=0, column=1, sticky=tk.EW, pady=5, padx=5)
+        
+        def browse_deployment():
+            path = filedialog.askdirectory(initialdir=deployment_dir.get() if deployment_dir.get() else os.path.expanduser("~"))
+            if path:
+                deployment_dir.set(path)
+        
+        ttk.Button(frm, text="...", command=browse_deployment, width=3).grid(row=0, column=2, sticky=tk.W, padx=5)
+        
+        # Buttons frame
+        btn_frm = ttk.Frame(frm)
+        btn_frm.grid(row=1, column=0, columnspan=3, pady=20, sticky=tk.EW)
+        
+        ttk.Button(btn_frm, text="Import Config Files", command=self._import_config_files).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frm, text="Export Config Files", command=self._export_config_files).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frm, text="Full Deployment", command=self._full_deployment).pack(side=tk.LEFT, padx=5)
+        
+        frm.columnconfigure(1, weight=1)
+
     # -----------------
     # Helpers
     # -----------------
@@ -336,3 +368,114 @@ class SettingsDialog(tk.Toplevel):
         self.destroy()
         # Reload config one more time to ensure it's current
         app_config.reload_config()
+
+    # -----------------
+    # Migration methods
+    # -----------------
+    def _get_deployment_path(self) -> str:
+        """Get the deployment path from UI variable or config, with default fallback."""
+        path_key = ("paths", "deployment_dir")
+        if path_key in self._vars:
+            path = self._vars[path_key].get()
+            if path:
+                return path
+        # Fallback to config data or default
+        node = self.config_data.get("paths", {})
+        return node.get("deployment_dir", r"g:\work\playlist builder 2")
+
+    def _import_config_files(self):
+        """Import config.json and settings.json from deployment location."""
+        try:
+            deployment_path = self._get_deployment_path()
+            if not os.path.exists(deployment_path):
+                messagebox.showerror("Error", f"Deployment directory does not exist:\n{deployment_path}")
+                return
+
+            source_config = os.path.join(deployment_path, "config.json")
+            source_settings = os.path.join(deployment_path, "settings.json")
+            
+            if os.path.exists(source_config):
+                shutil.copy2(source_config, CONFIG_PATH)
+            else:
+                messagebox.showerror("Error", f"config.json not found in deployment directory:\n{deployment_path}")
+                return
+            
+            settings_path = os.path.join(os.path.dirname(__file__), "settings.json")
+            if os.path.exists(source_settings):
+                shutil.copy2(source_settings, settings_path)
+            
+            # Reload config after import
+            self.config_data = load_config()
+            app_config.reload_config()
+        except Exception as exc:
+            logger.exception("Failed to import config files")
+            messagebox.showerror("Error", f"Failed to import config files:\n{exc}")
+
+    def _export_config_files(self):
+        """Export config.json and settings.json to deployment location."""
+        try:
+            deployment_path = self._get_deployment_path()
+            
+            # Create deployment directory if it doesn't exist
+            if not os.path.exists(deployment_path):
+                os.makedirs(deployment_path, exist_ok=True)
+
+            # Save current config before exporting
+            self._update_config_from_vars()
+            save_config(self.config_data)
+            
+            target_config = os.path.join(deployment_path, "config.json")
+            target_settings = os.path.join(deployment_path, "settings.json")
+            
+            if os.path.exists(CONFIG_PATH):
+                shutil.copy2(CONFIG_PATH, target_config)
+            
+            settings_path = os.path.join(os.path.dirname(__file__), "settings.json")
+            if os.path.exists(settings_path):
+                shutil.copy2(settings_path, target_settings)
+        except Exception as exc:
+            logger.exception("Failed to export config files")
+            messagebox.showerror("Error", f"Failed to export config files:\n{exc}")
+
+    def _full_deployment(self):
+        """Copy all files from current directory to deployment location."""
+        try:
+            deployment_path = self._get_deployment_path()
+            source_path = os.path.dirname(__file__)
+            
+            if not os.path.exists(source_path):
+                messagebox.showerror("Error", f"Source directory does not exist:\n{source_path}")
+                return
+            
+            # Create deployment directory if it doesn't exist
+            if not os.path.exists(deployment_path):
+                os.makedirs(deployment_path, exist_ok=True)
+
+            # Save current config before deploying
+            self._update_config_from_vars()
+            save_config(self.config_data)
+
+            # Get list of all files and directories to copy
+            items_to_copy = []
+            for item in os.listdir(source_path):
+                item_path = os.path.join(source_path, item)
+                # Skip __pycache__ directories
+                if item == "__pycache__":
+                    continue
+                items_to_copy.append(item)
+
+            # Copy files and directories
+            for item in items_to_copy:
+                source_item = os.path.join(source_path, item)
+                dest_item = os.path.join(deployment_path, item)
+                
+                if os.path.isdir(source_item):
+                    if os.path.exists(dest_item):
+                        shutil.rmtree(dest_item)
+                    shutil.copytree(source_item, dest_item, ignore=shutil.ignore_patterns("__pycache__"))
+                else:
+                    shutil.copy2(source_item, dest_item)
+                    
+        except Exception as exc:
+            logger.exception("Failed to deploy files")
+            messagebox.showerror("Error", f"Failed to deploy files:\n{exc}")
