@@ -1,4 +1,0 @@
-mutagen
-pydub
-pygame
-tk
