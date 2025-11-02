@@ -5,7 +5,6 @@ This module provides centralized font settings that can be used across the appli
 import tkinter as tk
 from tkinter.font import Font
 import json, os, logging
-import theme_manager
 
 # Base font size - can be adjusted to make all text bigger or smaller
 BASE_FONT_SIZE = 13
@@ -56,9 +55,7 @@ def configure_ttk_styles():
 
     fonts_cfg = cfg.get("fonts", {})
     tree_cfg = cfg.get("treeview", {})
-    
-    # Reload theme colors
-    theme_manager.reload_theme()
+    colors_cfg = cfg.get("colors", {})
 
     # Update globals so other modules see new font values
     global BASE_FONT_SIZE, DEFAULT_FONT_FAMILY
@@ -97,27 +94,27 @@ def configure_ttk_styles():
     style.configure(
         "TNotebook",
         padding=(0, 0),
-        background=theme_manager.get_color("notebook_bg", "#f5f5f5"),
+        background=colors_cfg.get("notebook_bg", "#f5f5f5"),
         borderwidth=0,
     )
     style.configure(
         "TNotebook.Tab",
         font=(DEFAULT_FONT_FAMILY, BASE_FONT_SIZE),
         padding=(5, 5),
-        background=theme_manager.get_color("tab_bg", "#e8e8e8"),
-        foreground=theme_manager.get_color("tab_fg", "#606060"),
+        background=colors_cfg.get("tab_bg", "#e8e8e8"),
+        foreground=colors_cfg.get("tab_fg", "#606060"),
         borderwidth=0,
         relief="flat",
     )
     style.map(
         "TNotebook.Tab",
         background=[
-            ("selected", theme_manager.get_color("selected_tab_bg", "#ffffff")),
-            ("active", theme_manager.get_color("active_tab_bg", "#f0f0f0")),
+            ("selected", colors_cfg.get("selected_tab_bg", "#ffffff")),
+            ("active", colors_cfg.get("active_tab_bg", "#f0f0f0")),
         ],
         foreground=[
-            ("selected", theme_manager.get_color("selected_tab_fg", "#303030")),
-            ("active", theme_manager.get_color("active_tab_fg", "#404040")),
+            ("selected", colors_cfg.get("selected_tab_fg", "#303030")),
+            ("active", colors_cfg.get("active_tab_fg", "#404040")),
         ],
         font=[("selected", (DEFAULT_FONT_FAMILY, BASE_FONT_SIZE, "bold"))],
         borderwidth=[("selected", 0)],
@@ -126,7 +123,7 @@ def configure_ttk_styles():
     # Notebook frame background
     style.configure(
         "NotebookFrame.TFrame",
-        background=theme_manager.get_color("notebook_bg", "#f5f5f5"),
+        background=colors_cfg.get("notebook_bg", "#f5f5f5"),
         borderwidth=0,
         relief="flat",
     )

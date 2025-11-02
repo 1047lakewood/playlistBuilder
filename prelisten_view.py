@@ -8,11 +8,10 @@ import logging
 from font_config import DEFAULT_FONT, BOLD_FONT, DEFAULT_FONT_TUPLE
 from audio_converter import AudioConverter
 from models.playlist import Playlist
-import theme_manager
 
 class PrelistenView(tk.Frame):
     def __init__(self, parent, track, on_close_callback):
-        super().__init__(parent, bg=theme_manager.get_color("prelisten_bg", "#f0f0f0"))
+        super().__init__(parent, bg="#f0f0f0")
         self.view_parent = parent # Store the ContainerView instance
         self.track = track
         self.track_path = track.path
@@ -37,9 +36,9 @@ class PrelistenView(tk.Frame):
         self.bind_all("<Escape>", lambda event: self.close())
         
     def create_widgets(self):
-        # Get theme colors
-        prelisten_bg = theme_manager.get_color("prelisten_bg", "#f0f0f0")
-        control_bg = theme_manager.get_color("prelisten_control_bg", "#e0e0e0")
+        # Colors
+        prelisten_bg = "#f0f0f0"
+        control_bg = "#e0e0e0"
         
         # Top control bar with title and close button
         self.control_frame = tk.Frame(self, bg=control_bg)
@@ -289,9 +288,9 @@ class PrelistenView(tk.Frame):
             print(f"Error closing prelisten view: {str(e)}")
     
     def refresh_theme_colors(self):
-        """Refresh colors from theme manager."""
-        prelisten_bg = theme_manager.get_color("prelisten_bg", "#f0f0f0")
-        control_bg = theme_manager.get_color("prelisten_control_bg", "#e0e0e0")
+        """Refresh colors - using hardcoded defaults."""
+        prelisten_bg = "#f0f0f0"
+        control_bg = "#e0e0e0"
         
         # Update widget backgrounds
         self.config(bg=prelisten_bg)

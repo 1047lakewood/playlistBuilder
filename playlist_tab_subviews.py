@@ -1,7 +1,6 @@
 from tkinter import ttk, Menu, Entry, Frame, StringVar, Label, Toplevel
 import utils
 from font_config import DEFAULT_FONT, BOLD_FONT, DEFAULT_FONT_TUPLE
-import theme_manager
 
 class PlaylistTabContextMenu:
     def __init__(self, parent):
@@ -110,15 +109,15 @@ class PlaylistTabTreeView(ttk.Treeview):
         self.refresh_theme_colors()
         
     def refresh_theme_colors(self):
-        """Refresh treeview tag colors from theme."""
-        self.tag_configure("missing_file", foreground=theme_manager.get_color("treeview_missing", "#FF3B30"))
-        self.tag_configure("search_match", background=theme_manager.get_color("treeview_search_match", "#E8F0FE"))
-        self.tag_configure("search_current", background=theme_manager.get_color("treeview_search_current", "#BBDEFB"))
-        self.tag_configure("currently_playing", background=theme_manager.get_color("treeview_playing", "#E0FFE0"))
+        """Refresh treeview tag colors - using hardcoded defaults."""
+        self.tag_configure("missing_file", foreground="#FF3B30")
+        self.tag_configure("search_match", background="#E8F0FE")
+        self.tag_configure("search_current", background="#BBDEFB")
+        self.tag_configure("currently_playing", background="#E0FFE0")
         
         # Add alternating row colors for better readability
-        self.tag_configure("even_row", background=theme_manager.get_color("treeview_even", "#F9F9F9"))
-        self.tag_configure("odd_row", background=theme_manager.get_color("treeview_odd", "#FFFFFF"))
+        self.tag_configure("even_row", background="#F9F9F9")
+        self.tag_configure("odd_row", background="#FFFFFF")
         
         # Add some internal padding to cells for better text spacing
         style = ttk.Style()
@@ -188,7 +187,7 @@ class PlaylistTabTreeView(ttk.Treeview):
 
 class SearchFrame(Frame):
     def __init__(self, parent, search_callback, close_callback, next_callback=None, prev_callback=None):
-        super().__init__(parent, bg=theme_manager.get_color("search_frame_bg", "#F0F0F0"), relief="ridge", borderwidth=2)
+        super().__init__(parent, bg="#F0F0F0", relief="ridge", borderwidth=2)
         self.parent = parent
         self.search_callback = search_callback
         self.close_callback = close_callback
@@ -232,11 +231,11 @@ class SearchFrame(Frame):
         self.number_var.trace_add("write", on_number_change)
         
         # Add padding around the entire frame
-        bg_color = theme_manager.get_color("search_frame_bg", "#F0F0F0")
-        fg_color = theme_manager.get_color("search_frame_fg", "#505050")
-        entry_bg = theme_manager.get_color("search_entry_bg", "#FFFFFF")
-        entry_highlight = theme_manager.get_color("search_entry_highlight", "#0078D7")
-        entry_border = theme_manager.get_color("search_entry_border", "#E0E0E0")
+        bg_color = "#F0F0F0"
+        fg_color = "#505050"
+        entry_bg = "#FFFFFF"
+        entry_highlight = "#0078D7"
+        entry_border = "#E0E0E0"
         
         inner_frame = Frame(self, bg=bg_color)
         inner_frame.pack(fill="both", expand=True, padx=10, pady=8)

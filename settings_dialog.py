@@ -6,8 +6,9 @@ The dialog is split into two panes:
 
 Currently exposes settings for:
 - Fonts (family, base size)
-- Colors (various UI colors)
 - Treeview (row height)
+- Paths & Network
+- Migration
 
 On Apply / OK the ``config.json`` file is rewritten and the application styles
 are updated at runtime by calling ``font_config.configure_ttk_styles``.
@@ -20,13 +21,12 @@ import os
 import re
 import shutil
 import tkinter as tk
-from tkinter import ttk, messagebox, colorchooser, filedialog
+from tkinter import ttk, messagebox, filedialog
 from tkinter import font as tkfont
 from copy import deepcopy
 
 import font_config
 import app_config
-import theme_manager
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
 
@@ -37,10 +37,6 @@ DEFAULT_CONFIG: dict = {
     "fonts": {
         "base_size": 13,
         "family": "Segoe UI",
-    },
-    "theme": {
-        "name": "Light",
-        "overrides": {}
     },
     "treeview": {
         "row_height": 30,
@@ -58,8 +54,6 @@ def load_config() -> dict:
     try:
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
             config = json.load(f)
-        # Migrate old colors format if needed
-        theme_manager.migrate_old_colors(config)
         return config
     except Exception as exc:
         logger.exception("Failed to load config.json: %s", exc)
@@ -82,7 +76,6 @@ class SettingsDialog(tk.Toplevel):
     """A modal dialog that lets the user edit application settings."""
 
     CATEGORY_FONTS = "Fonts"
-    CATEGORY_COLORS = "Colors"
     CATEGORY_TREEVIEW = "Treeview"
     CATEGORY_PATHS_NET = "Paths & Network"
     CATEGORY_MIGRATION = "Migration"
@@ -112,7 +105,7 @@ class SettingsDialog(tk.Toplevel):
 
         # Left: category list
         self.category_list = tk.Listbox(paned, exportselection=False)
-        for cat in (self.CATEGORY_FONTS, self.CATEGORY_COLORS, self.CATEGORY_TREEVIEW, self.CATEGORY_PATHS_NET, self.CATEGORY_MIGRATION):
+        for cat in (self.CATEGORY_FONTS, self.CATEGORY_TREEVIEW, self.CATEGORY_PATHS_NET, self.CATEGORY_MIGRATION):
             self.category_list.insert(tk.END, cat)
         self.category_list.bind("<<ListboxSelect>>", self._on_category_selected)
         paned.add(self.category_list, weight=1)
@@ -158,8 +151,6 @@ class SettingsDialog(tk.Toplevel):
         self._clear_editor()
         if category == self.CATEGORY_FONTS:
             self._build_fonts_editor()
-        elif category == self.CATEGORY_COLORS:
-            self._build_colors_editor()
         elif category == self.CATEGORY_TREEVIEW:
             self._build_treeview_editor()
         elif category == self.CATEGORY_PATHS_NET:
@@ -185,147 +176,6 @@ class SettingsDialog(tk.Toplevel):
         ttk.Spinbox(frm, from_=6, to=72, textvariable=size, width=5).grid(row=1, column=1, sticky=tk.W, pady=5, padx=5)
 
         frm.columnconfigure(1, weight=1)
-
-    def _build_colors_editor(self):
-        frm = ttk.Frame(self.editor_frame_container)
-        frm.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-
-        # Theme selection at the top
-        theme_frame = ttk.LabelFrame(frm, text="Theme Selection", padding=10)
-        theme_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        ttk.Label(theme_frame, text="Select Theme:").grid(row=0, column=0, sticky=tk.W, pady=5, padx=5)
-        theme_var = self._get_setting_var(("theme", "name"), tk.StringVar, default=theme_manager.DEFAULT_THEME)
-        theme_combo = ttk.Combobox(
-            theme_frame, 
-            values=theme_manager.get_available_themes(), 
-            textvariable=theme_var, 
-            state="readonly",
-            width=20
-        )
-        theme_combo.grid(row=0, column=1, sticky=tk.W, pady=5, padx=5)
-        
-        # Preview button
-        def preview_theme():
-            self._apply_theme_preview(theme_var.get())
-        
-        ttk.Button(theme_frame, text="Preview", command=preview_theme).grid(row=0, column=2, padx=5)
-        
-        # Description label
-        desc_label = ttk.Label(theme_frame, text="Select a theme and click Preview to see changes", 
-                              foreground="gray")
-        desc_label.grid(row=1, column=0, columnspan=3, sticky=tk.W, padx=5, pady=(5, 0))
-        
-        # Color overrides section
-        override_frame = ttk.LabelFrame(frm, text="Color Overrides (Optional)", padding=10)
-        override_frame.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
-        
-        # Create a scrollable frame for color overrides
-        canvas = tk.Canvas(override_frame, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(override_frame, orient="vertical", command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas)
-        
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        # Helper to create color override row
-        def make_color_row(row: int, label: str, color_key: str):
-            var = self._get_setting_var(("theme", "overrides", color_key), tk.StringVar, 
-                                       default=theme_manager.THEMES[theme_manager.DEFAULT_THEME].get(color_key, "#ffffff"))
-            
-            ttk.Label(scrollable_frame, text=label).grid(row=row, column=0, sticky=tk.W, pady=3, padx=5)
-            ent = ttk.Entry(scrollable_frame, textvariable=var, width=12)
-            ent.grid(row=row, column=1, sticky=tk.W, pady=3, padx=5)
-            
-            # Color preview square
-            preview_label = tk.Label(scrollable_frame, text="   ", bg=var.get(), 
-                                    relief="solid", borderwidth=1, width=3)
-            preview_label.grid(row=row, column=2, pady=3, padx=2)
-            
-            def pick_color():
-                initial_color = var.get()
-                color = colorchooser.askcolor(color=initial_color, parent=self)[1]
-                if color:
-                    var.set(color)
-                    preview_label.config(bg=color)
-            
-            ttk.Button(scrollable_frame, text="...", width=3, command=pick_color).grid(row=row, column=3, sticky=tk.W, padx=2)
-            
-            # Reset button to revert to theme default
-            def reset_to_theme():
-                current_theme = theme_var.get()
-                default_color = theme_manager.THEMES.get(current_theme, {}).get(color_key, "#ffffff")
-                var.set(default_color)
-                preview_label.config(bg=default_color)
-            
-            ttk.Button(scrollable_frame, text="↺", width=2, command=reset_to_theme).grid(row=row, column=4, sticky=tk.W, padx=2)
-        
-        # Color override settings organized by category
-        color_settings = [
-            # Notebook/Tabs
-            ("Notebook Background", "notebook_bg"),
-            ("Tab Background", "tab_bg"),
-            ("Tab Foreground", "tab_fg"),
-            ("Selected Tab Background", "selected_tab_bg"),
-            ("Selected Tab Foreground", "selected_tab_fg"),
-            ("Active Tab Background", "active_tab_bg"),
-            ("Active Tab Foreground", "active_tab_fg"),
-            # Treeview
-            ("Treeview Even Row", "treeview_even"),
-            ("Treeview Odd Row", "treeview_odd"),
-            ("Treeview Missing File", "treeview_missing"),
-            ("Treeview Search Match", "treeview_search_match"),
-            ("Treeview Search Current", "treeview_search_current"),
-            ("Treeview Playing Track", "treeview_playing"),
-            # Search Frame
-            ("Search Frame Background", "search_frame_bg"),
-            ("Search Frame Foreground", "search_frame_fg"),
-            ("Search Entry Background", "search_entry_bg"),
-            ("Search Entry Highlight", "search_entry_highlight"),
-            ("Search Entry Border", "search_entry_border"),
-            # Prelisten
-            ("Prelisten Background", "prelisten_bg"),
-            ("Prelisten Control Background", "prelisten_control_bg"),
-            # Currently Playing
-            ("Currently Playing Background", "currently_playing_bg"),
-            ("Currently Playing Foreground", "currently_playing_fg"),
-            ("Currently Playing Hover", "currently_playing_hover"),
-        ]
-        
-        for idx, (lbl, key) in enumerate(color_settings):
-            make_color_row(idx, lbl, key)
-        
-        scrollable_frame.columnconfigure(1, weight=1)
-        
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        
-    def _apply_theme_preview(self, theme_name: str):
-        """Apply theme preview by temporarily loading the theme."""
-        try:
-            # Temporarily save and apply the theme
-            current_config = self.config_data.copy()
-            if "theme" not in current_config:
-                current_config["theme"] = {}
-            current_config["theme"]["name"] = theme_name
-            
-            # Save temporarily
-            save_config(current_config)
-            
-            # Reload and apply
-            theme_manager.reload_theme()
-            font_config.configure_ttk_styles()
-            
-            messagebox.showinfo("Preview Applied", 
-                              f"Theme '{theme_name}' has been previewed. Click Apply or OK to save changes.")
-        except Exception as exc:
-            logger.exception("Failed to preview theme")
-            messagebox.showerror("Preview Error", f"Failed to preview theme:\n{exc}")
 
     def _build_paths_network_editor(self):
         frm = ttk.Frame(self.editor_frame_container)
@@ -421,17 +271,10 @@ class SettingsDialog(tk.Toplevel):
     # Button callbacks
     # -----------------
     URL_REGEX = re.compile(r"^https?://.+", re.IGNORECASE)
-    COLOR_REGEX = re.compile(r"^#(?:[0-9a-fA-F]{3}){1,2}$")
 
     def _validate_before_save(self) -> bool:
         """Return True if all fields are valid, else show error and return False."""
-        # Validate colors (both old format and new theme overrides)
         for path in self._vars:
-            if path[0] == "colors" or (len(path) > 1 and path[0] == "theme" and path[1] == "overrides"):
-                val = self._vars[path].get()
-                if val and not self.COLOR_REGEX.match(val):
-                    messagebox.showerror("Invalid Color", f"{val} is not a valid hex color (e.g. #RRGGBB)")
-                    return False
             if path == ("treeview", "row_height"):
                 try:
                     if int(self._vars[path].get()) <= 0:
@@ -451,14 +294,9 @@ class SettingsDialog(tk.Toplevel):
             return
         self._update_config_from_vars()
         
-        # Migrate old colors to theme structure if needed
-        theme_manager.migrate_old_colors(self.config_data)
-        
         save_config(self.config_data)
         # Reload the config in memory so app_config.get() returns updated values
         app_config.reload_config()
-        # Reload theme
-        theme_manager.reload_theme()
         try:
             font_config.configure_ttk_styles()
         except Exception:
@@ -571,10 +409,12 @@ class SettingsDialog(tk.Toplevel):
 
             # Get list of all files and directories to copy
             items_to_copy = []
+            # Directories to skip during deployment
+            skip_items = {"__pycache__", ".git", ".vscode", ".idea", "docs", "venv", ".env"}
             for item in os.listdir(source_path):
                 item_path = os.path.join(source_path, item)
-                # Skip __pycache__ directories
-                if item == "__pycache__":
+                # Skip development directories
+                if item in skip_items:
                     continue
                 items_to_copy.append(item)
 

@@ -3,7 +3,6 @@ from tkinter import messagebox, Frame
 from tkinter import ttk
 from playlist_notebook_view import PlaylistNotebookView
 from prelisten_view import PrelistenView
-import theme_manager
 
 
 
@@ -15,7 +14,7 @@ class ContainerView(Frame):
         self.pack(fill="both", expand=True, padx=5, pady=0)  # Reduced padding, especially on top
 
         # Currently playing bar at the top (initially hidden)
-        self.currently_playing_frame = tk.Frame(self, bg=theme_manager.get_color("currently_playing_bg", "#d4edda"))
+        self.currently_playing_frame = tk.Frame(self, bg="#d4edda")
         # Don't pack initially - will be shown when remote playlist is loaded
 
         self._currently_playing_callback = None
@@ -23,8 +22,8 @@ class ContainerView(Frame):
             self.currently_playing_frame,
             text="Currently Playing: —",
             anchor="w",
-            bg=theme_manager.get_color("currently_playing_bg", "#d4edda"),
-            fg=theme_manager.get_color("currently_playing_fg", "#155724"),
+            bg="#d4edda",
+            fg="#155724",
             padx=12,
             pady=6,
             font=("Segoe UI", 10, "bold"),
@@ -95,20 +94,20 @@ class ContainerView(Frame):
         if clickable and on_click:
             self._currently_playing_callback = on_click
             self.currently_playing_label.config(cursor="hand2", 
-                                               fg=theme_manager.get_color("currently_playing_hover", "#0f5132"))
+                                               fg="#0f5132")
         else:
             self._currently_playing_callback = None
             self.currently_playing_label.config(cursor="", 
-                                               fg=theme_manager.get_color("currently_playing_fg", "#155724"))
+                                               fg="#155724")
 
     def _handle_currently_playing_click(self, _event):
         if self._currently_playing_callback:
             self._currently_playing_callback()
     
     def refresh_theme_colors(self):
-        """Refresh colors from theme manager."""
-        bg_color = theme_manager.get_color("currently_playing_bg", "#d4edda")
-        fg_color = theme_manager.get_color("currently_playing_fg", "#155724")
+        """Refresh colors - using hardcoded defaults."""
+        bg_color = "#d4edda"
+        fg_color = "#155724"
         
         # Update frame and label backgrounds
         self.currently_playing_frame.config(bg=bg_color)
