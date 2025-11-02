@@ -82,6 +82,16 @@ class PlaylistNotebookView:
     def remove_all_tabs(self):
         for tab in self.notebook.tabs():
             self.remove_tab(self.notebook.nametowidget(tab))
+    
+    def refresh_theme_colors(self):
+        """Refresh theme colors for all tabs."""
+        for tab_id in self.notebook.tabs():
+            try:
+                tab_view = self.notebook.nametowidget(tab_id)
+                if hasattr(tab_view, 'refresh_theme_colors'):
+                    tab_view.refresh_theme_colors()
+            except Exception as e:
+                print(f"Error refreshing tab colors: {e}")
 
     def reorder_tabs(self, old_index, new_index):
         if old_index == new_index:

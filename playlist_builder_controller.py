@@ -231,10 +231,28 @@ class PlaylistBuilderController:
     def open_settings_dialog(self, event=None):
         """Open the settings dialog modally."""
         try:
-            SettingsDialog(self.root, on_apply=lambda: None)
+            SettingsDialog(self.root, on_apply=self.refresh_theme_colors)
         except Exception as e:
             print(f"Error opening settings dialog: {str(e)}")
             messagebox.showerror("Error", f"Failed to open settings dialog: {str(e)}")
+    
+    def refresh_theme_colors(self):
+        """Refresh theme colors for all widgets after settings change."""
+        try:
+            # Refresh container view (currently playing bar)
+            if hasattr(self, 'container_view') and hasattr(self.container_view, 'refresh_theme_colors'):
+                self.container_view.refresh_theme_colors()
+            
+            # Refresh all notebook tabs
+            if hasattr(self, 'notebook_view') and hasattr(self.notebook_view, 'refresh_theme_colors'):
+                self.notebook_view.refresh_theme_colors()
+            
+            # Refresh prelisten view if it exists
+            if hasattr(self, 'container_view') and self.container_view.prelisten_view:
+                if hasattr(self.container_view.prelisten_view, 'refresh_theme_colors'):
+                    self.container_view.prelisten_view.refresh_theme_colors()
+        except Exception as e:
+            print(f"Error refreshing theme colors: {e}")
 
     def show_about_dialog(self, event=None):
         """Show the About dialog with program name and developer information"""

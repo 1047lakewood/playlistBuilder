@@ -8,10 +8,11 @@ import logging
 from font_config import DEFAULT_FONT, BOLD_FONT, DEFAULT_FONT_TUPLE
 from audio_converter import AudioConverter
 from models.playlist import Playlist
+import theme_manager
 
 class PrelistenView(tk.Frame):
     def __init__(self, parent, track, on_close_callback):
-        super().__init__(parent, bg="#f0f0f0")
+        super().__init__(parent, bg=theme_manager.get_color("prelisten_bg", "#f0f0f0"))
         self.view_parent = parent # Store the ContainerView instance
         self.track = track
         self.track_path = track.path
@@ -36,8 +37,12 @@ class PrelistenView(tk.Frame):
         self.bind_all("<Escape>", lambda event: self.close())
         
     def create_widgets(self):
+        # Get theme colors
+        prelisten_bg = theme_manager.get_color("prelisten_bg", "#f0f0f0")
+        control_bg = theme_manager.get_color("prelisten_control_bg", "#e0e0e0")
+        
         # Top control bar with title and close button
-        self.control_frame = tk.Frame(self, bg="#e0e0e0")
+        self.control_frame = tk.Frame(self, bg=control_bg)
         self.control_frame.pack(fill="x", padx=5, pady=5)
         
         # Close button (moved to left side)
@@ -46,11 +51,11 @@ class PrelistenView(tk.Frame):
         
         # Track title label
         self.title_label = tk.Label(self.control_frame, text="Prelistening: " + os.path.basename(self.track_path), 
-                                    bg="#e0e0e0", anchor="w", font=DEFAULT_FONT)
+                                    bg=control_bg, anchor="w", font=DEFAULT_FONT)
         self.title_label.pack(side="left", padx=5)
         
         # Playback controls
-        self.playback_frame = tk.Frame(self, bg="#f0f0f0")
+        self.playback_frame = tk.Frame(self, bg=prelisten_bg)
         self.playback_frame.pack(fill="x", padx=10, pady=5)
         
         # Play/Pause button
@@ -58,12 +63,12 @@ class PrelistenView(tk.Frame):
         self.play_button.pack(side="left", padx=5)
         
         # Time display
-        self.time_label = tk.Label(self.playback_frame, text="0:00 / 0:00", bg="#f0f0f0", font=DEFAULT_FONT)
+        self.time_label = tk.Label(self.playback_frame, text="0:00 / 0:00", bg=prelisten_bg, font=DEFAULT_FONT)
         self.time_label.pack(side="left", padx=10)
 
         
         # Progress bar
-        self.progress_frame = tk.Frame(self, bg="#f0f0f0")
+        self.progress_frame = tk.Frame(self, bg=prelisten_bg)
         self.progress_frame.pack(fill="x", padx=10, pady=5)
         
         self.progress_bar = ttk.Scale(self.progress_frame, from_=0, to=100, orient="horizontal", 
@@ -71,7 +76,7 @@ class PrelistenView(tk.Frame):
         self.progress_bar.pack(fill="x", expand=True)
         
         # Status message
-        self.status_label = tk.Label(self, text="Loading audio...", bg="#f0f0f0", font=DEFAULT_FONT)
+        self.status_label = tk.Label(self, text="Loading audio...", bg=prelisten_bg, font=DEFAULT_FONT)
         self.status_label.pack(pady=5)
         
     def load_audio(self):
@@ -282,3 +287,17 @@ class PrelistenView(tk.Frame):
                 self.on_close_callback()
         except Exception as e:
             print(f"Error closing prelisten view: {str(e)}")
+    
+    def refresh_theme_colors(self):
+        """Refresh colors from theme manager."""
+        prelisten_bg = theme_manager.get_color("prelisten_bg", "#f0f0f0")
+        control_bg = theme_manager.get_color("prelisten_control_bg", "#e0e0e0")
+        
+        # Update widget backgrounds
+        self.config(bg=prelisten_bg)
+        self.control_frame.config(bg=control_bg)
+        self.title_label.config(bg=control_bg)
+        self.playback_frame.config(bg=prelisten_bg)
+        self.time_label.config(bg=prelisten_bg)
+        self.progress_frame.config(bg=prelisten_bg)
+        self.status_label.config(bg=prelisten_bg)

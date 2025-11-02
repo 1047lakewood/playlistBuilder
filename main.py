@@ -5,12 +5,18 @@ from menu_bar import MenuBar
 from keyboard_bindings import KeyboardBindings
 from playlist_builder_controller import PlaylistBuilderController
 from font_config import configure_ttk_styles
+import theme_manager
+import os
 
 def main():
     root = TkinterDnD.Tk()
     root.geometry("1400x800")
     
-    # Configure fonts for the application
+    # Initialize theme manager
+    config_path = os.path.join(os.path.dirname(__file__), "config.json")
+    theme_manager.initialize(config_path)
+    
+    # Configure fonts and styles for the application
     configure_ttk_styles()
 
     controller = PlaylistBuilderController(root)

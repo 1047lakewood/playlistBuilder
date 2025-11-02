@@ -451,3 +451,12 @@ class PlaylistTabView(ttk.Frame):
                 except Exception:
                     pass
                 return
+    
+    def refresh_theme_colors(self):
+        """Refresh theme colors for this tab's widgets."""
+        # Refresh treeview colors
+        if hasattr(self.tree, 'refresh_theme_colors'):
+            self.tree.refresh_theme_colors()
+        
+        # Note: SearchFrame is created dynamically, so it will get
+        # the new colors automatically when it's next created

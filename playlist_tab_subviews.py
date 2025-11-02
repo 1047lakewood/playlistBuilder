@@ -1,6 +1,7 @@
 from tkinter import ttk, Menu, Entry, Frame, StringVar, Label, Toplevel
 import utils
 from font_config import DEFAULT_FONT, BOLD_FONT, DEFAULT_FONT_TUPLE
+import theme_manager
 
 class PlaylistTabContextMenu:
     def __init__(self, parent):
@@ -105,15 +106,19 @@ class PlaylistTabTreeView(ttk.Treeview):
         self.column("Duration", width=90, anchor="center", stretch=False)
         self.column("Path", width=150, stretch=True)
         
-        # Configure tags for row styling with improved colors
-        self.tag_configure("missing_file", foreground="#FF3B30")  # Brighter red
-        self.tag_configure("search_match", background="#E8F0FE")  # Lighter blue
-        self.tag_configure("search_current", background="#BBDEFB")  # Medium blue
-        self.tag_configure("currently_playing", background="#E0FFE0")  # Softer green
+        # Configure tags for row styling using theme colors
+        self.refresh_theme_colors()
+        
+    def refresh_theme_colors(self):
+        """Refresh treeview tag colors from theme."""
+        self.tag_configure("missing_file", foreground=theme_manager.get_color("treeview_missing", "#FF3B30"))
+        self.tag_configure("search_match", background=theme_manager.get_color("treeview_search_match", "#E8F0FE"))
+        self.tag_configure("search_current", background=theme_manager.get_color("treeview_search_current", "#BBDEFB"))
+        self.tag_configure("currently_playing", background=theme_manager.get_color("treeview_playing", "#E0FFE0"))
         
         # Add alternating row colors for better readability
-        self.tag_configure("even_row", background="#F9F9F9")
-        self.tag_configure("odd_row", background="#FFFFFF")
+        self.tag_configure("even_row", background=theme_manager.get_color("treeview_even", "#F9F9F9"))
+        self.tag_configure("odd_row", background=theme_manager.get_color("treeview_odd", "#FFFFFF"))
         
         # Add some internal padding to cells for better text spacing
         style = ttk.Style()
@@ -183,7 +188,7 @@ class PlaylistTabTreeView(ttk.Treeview):
 
 class SearchFrame(Frame):
     def __init__(self, parent, search_callback, close_callback, next_callback=None, prev_callback=None):
-        super().__init__(parent, bg="#F0F0F0", relief="ridge", borderwidth=2)
+        super().__init__(parent, bg=theme_manager.get_color("search_frame_bg", "#F0F0F0"), relief="ridge", borderwidth=2)
         self.parent = parent
         self.search_callback = search_callback
         self.close_callback = close_callback
@@ -227,7 +232,13 @@ class SearchFrame(Frame):
         self.number_var.trace_add("write", on_number_change)
         
         # Add padding around the entire frame
-        inner_frame = Frame(self, bg="#F0F0F0")
+        bg_color = theme_manager.get_color("search_frame_bg", "#F0F0F0")
+        fg_color = theme_manager.get_color("search_frame_fg", "#505050")
+        entry_bg = theme_manager.get_color("search_entry_bg", "#FFFFFF")
+        entry_highlight = theme_manager.get_color("search_entry_highlight", "#0078D7")
+        entry_border = theme_manager.get_color("search_entry_border", "#E0E0E0")
+        
+        inner_frame = Frame(self, bg=bg_color)
         inner_frame.pack(fill="both", expand=True, padx=10, pady=8)
         
         # Number search label (bigger font)
@@ -235,8 +246,8 @@ class SearchFrame(Frame):
             inner_frame, 
             text="#", 
             font=("Segoe UI", 15, "normal"), 
-            bg="#F0F0F0",
-            fg="#505050"
+            bg=bg_color,
+            fg=fg_color
         )
         number_label.pack(side="left", padx=(0, 4))
         
@@ -249,10 +260,10 @@ class SearchFrame(Frame):
             relief="flat",
             borderwidth=0,
             highlightthickness=2,
-            highlightbackground="#E0E0E0",
-            highlightcolor="#0078D7",
-            bg="#FFFFFF",
-            insertbackground="#0078D7"
+            highlightbackground=entry_border,
+            highlightcolor=entry_highlight,
+            bg=entry_bg,
+            insertbackground=entry_highlight
         )
         self.number_entry.pack(side="left", padx=(0, 8), ipady=5)
         
@@ -261,8 +272,8 @@ class SearchFrame(Frame):
             inner_frame, 
             text="Search", 
             font=("Segoe UI", 13, "normal"), 
-            bg="#F0F0F0",
-            fg="#505050"
+            bg=bg_color,
+            fg=fg_color
         )
         search_icon.pack(side="left", padx=(0, 8))
         
@@ -275,10 +286,10 @@ class SearchFrame(Frame):
             relief="flat",
             borderwidth=0,
             highlightthickness=2,
-            highlightbackground="#E0E0E0",
-            highlightcolor="#0078D7",
-            bg="#FFFFFF",
-            insertbackground="#0078D7"
+            highlightbackground=entry_border,
+            highlightcolor=entry_highlight,
+            bg=entry_bg,
+            insertbackground=entry_highlight
         )
         self.search_entry.pack(side="left", padx=5, ipady=5)
         self.search_entry.focus_set()

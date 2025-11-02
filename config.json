@@ -24,5 +24,33 @@
         "row_height": 30,
         "heading_padding_x": 5,
         "heading_padding_y": 5
+    },
+    "theme": {
+        "name": "Dark",
+        "overrides": {
+            "notebook_bg": "#f5f5f5",
+            "tab_bg": "#e8e8e8",
+            "tab_fg": "#606060",
+            "selected_tab_bg": "#ffffff",
+            "selected_tab_fg": "#303030",
+            "active_tab_bg": "#f0f0f0",
+            "active_tab_fg": "#404040",
+            "treeview_even": "#F9F9F9",
+            "treeview_odd": "#FFFFFF",
+            "treeview_missing": "#FF3B30",
+            "treeview_search_match": "#E8F0FE",
+            "treeview_search_current": "#BBDEFB",
+            "treeview_playing": "#E0FFE0",
+            "search_frame_bg": "#F0F0F0",
+            "search_frame_fg": "#505050",
+            "search_entry_bg": "#FFFFFF",
+            "search_entry_highlight": "#0078D7",
+            "search_entry_border": "#E0E0E0",
+            "prelisten_bg": "#f0f0f0",
+            "prelisten_control_bg": "#e0e0e0",
+            "currently_playing_bg": "#d4edda",
+            "currently_playing_fg": "#155724",
+            "currently_playing_hover": "#0f5132"
+        }
     }
 }
