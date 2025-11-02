@@ -153,28 +153,43 @@ class PlaylistTabView(ttk.Frame):
             # Clear any highlighting
             self.clear_search_results()
     
-    def perform_search(self, search_text):
-        """Search for text in the tree view"""
+    def perform_search(self, search_text="", search_number=""):
+        """Search for text and/or number in the tree view"""
         self.clear_search_results()
         
-        if not search_text:
+        if not search_text and not search_number:
             return
-            
-        search_text = search_text.lower()
+        
+        search_text = search_text.lower() if search_text else ""
+        search_number = search_number.strip() if search_number else ""
         self.search_results = []
         
         # Search through all rows
         for item_id in self.tree.get_children():
-            match_found = False
+            number_match = True
+            text_match = True
             values = self.tree.item(item_id, 'values')
             
-            # Convert all values to strings and check if any contain the search text
-            for value in values:
-                if str(value).lower().find(search_text) != -1:
-                    match_found = True
-                    break
-                    
-            if match_found:
+            # Check number search (matches against first column, index 0)
+            if search_number:
+                if len(values) > 0:
+                    number_str = str(values[0]).strip()
+                    number_match = (number_str == search_number or number_str.find(search_number) != -1)
+                else:
+                    number_match = False
+            
+            # Check text search (matches against all other columns, or all if no number search)
+            if search_text:
+                text_match = False
+                # If number search is active, only search other columns; otherwise search all
+                start_idx = 1 if search_number else 0
+                for i in range(start_idx, len(values)):
+                    if str(values[i]).lower().find(search_text) != -1:
+                        text_match = True
+                        break
+            
+            # Match if both conditions are met (or if only one search is active, that one matches)
+            if number_match and text_match:
                 self.search_results.append(item_id)
                 self.tree.item(item_id, tags=("search_match",))
         

@@ -183,7 +183,7 @@ class PlaylistTabTreeView(ttk.Treeview):
 
 class SearchFrame(Frame):
     def __init__(self, parent, search_callback, close_callback, next_callback=None, prev_callback=None):
-        super().__init__(parent)
+        super().__init__(parent, bg="#F0F0F0", relief="ridge", borderwidth=2)
         self.parent = parent
         self.search_callback = search_callback
         self.close_callback = close_callback
@@ -192,31 +192,106 @@ class SearchFrame(Frame):
         
         # Create a frame with a search field and buttons
         self.search_var = StringVar()
-        self.search_var.trace_add("write", lambda name, index, mode: self.search_callback(self.search_var.get()))
+        self.number_var = StringVar()
         
-        # Label
-        Label(self, text="Search:", font=DEFAULT_FONT).pack(side="left", padx=(5, 0))
+        def update_search(*args):
+            self.search_callback(self.search_var.get(), self.number_var.get())
         
-        # Search entry - fixed width of 250 pixels
-        self.search_entry = Entry(self, textvariable=self.search_var, width=30, font=DEFAULT_FONT)
-        self.search_entry.pack(side="left", padx=5, pady=5)
-        # Set the width to 250 pixels
-        self.search_entry.config(width=25)  # Approximately 250 pixels with default font
+        self.search_var.trace_add("write", update_search)
+        self.number_var.trace_add("write", update_search)
+        
+        # Add padding around the entire frame
+        inner_frame = Frame(self, bg="#F0F0F0")
+        inner_frame.pack(fill="both", expand=True, padx=10, pady=8)
+        
+        # Number search label (bigger font)
+        number_label = Label(
+            inner_frame, 
+            text="#", 
+            font=("Segoe UI", 15, "normal"), 
+            bg="#F0F0F0",
+            fg="#505050"
+        )
+        number_label.pack(side="left", padx=(0, 4))
+        
+        # Number search entry with modern styling (smaller width)
+        self.number_entry = Entry(
+            inner_frame, 
+            textvariable=self.number_var, 
+            width=8, 
+            font=("Segoe UI", 11),
+            relief="flat",
+            borderwidth=0,
+            highlightthickness=2,
+            highlightbackground="#E0E0E0",
+            highlightcolor="#0078D7",
+            bg="#FFFFFF",
+            insertbackground="#0078D7"
+        )
+        self.number_entry.pack(side="left", padx=(0, 8), ipady=5)
+        
+        # Search label with modern styling (moved after number field)
+        search_icon = Label(
+            inner_frame, 
+            text="Search", 
+            font=("Segoe UI", 13, "normal"), 
+            bg="#F0F0F0",
+            fg="#505050"
+        )
+        search_icon.pack(side="left", padx=(0, 8))
+        
+        # Search entry with modern styling
+        self.search_entry = Entry(
+            inner_frame, 
+            textvariable=self.search_var, 
+            width=35, 
+            font=("Segoe UI", 11),
+            relief="flat",
+            borderwidth=0,
+            highlightthickness=2,
+            highlightbackground="#E0E0E0",
+            highlightcolor="#0078D7",
+            bg="#FFFFFF",
+            insertbackground="#0078D7"
+        )
+        self.search_entry.pack(side="left", padx=5, ipady=5)
         self.search_entry.focus_set()
         
-        # Previous button - smaller size
+        # Button style configuration
+        style = ttk.Style()
+        style.configure("Search.TButton", padding=5)
+        
+        # Previous button with better icon and styling
         if prev_callback:
-            prev_button = ttk.Button(self, text="↑", width=1, command=prev_callback)
-            prev_button.pack(side="left", padx=1)
+            prev_button = ttk.Button(
+                inner_frame, 
+                text="△", 
+                width=3, 
+                style="Search.TButton",
+                command=prev_callback
+            )
+            prev_button.pack(side="left", padx=2)
         
-        # Next button - smaller size
+        # Next button with better icon and styling
         if next_callback:
-            next_button = ttk.Button(self, text="↓", width=1, command=next_callback)
-            next_button.pack(side="left", padx=1)
+            next_button = ttk.Button(
+                inner_frame, 
+                text="▽", 
+                width=3,
+                style="Search.TButton",
+                command=next_callback
+            )
+            next_button.pack(side="left", padx=2)
         
-        # Close button - smaller size
-        close_button = ttk.Button(self, text="×", width=1, command=self.close_callback)
-        close_button.pack(side="left", padx=1)
+        # Close button with better icon and styling
+        close_button = ttk.Button(
+            inner_frame, 
+            text="✕", 
+            width=3,
+            style="Search.TButton",
+            command=self.close_callback
+        )
+        close_button.pack(side="left", padx=(8, 0))
         
         # Bind keys
         self.search_entry.bind("<Escape>", lambda event: self.close_callback())
@@ -227,3 +302,6 @@ class SearchFrame(Frame):
         
     def get_search_text(self):
         return self.search_var.get()
+    
+    def get_search_number(self):
+        return self.number_var.get()
