@@ -34,15 +34,36 @@ class PlaylistNotebookView:
                 playlist = view.playlist
                 if playlist.type == Playlist.PlaylistType.API:
                     path = playlist.path
-                    tab_state.append((title, path, "api"))
+                    source_id = getattr(playlist, 'source_id', None)
+                    # Store source_id for API playlists
+                    tab_state.append((title, path, "api", source_id))
                 else:
                     path = playlist.path
-                    tab_state.append((title, path, "local"))
+                    tab_state.append((title, path, "local", None))
                 print(f"Saving tab: {title}, {path}")
             except Exception as e:
                 print(f"Error getting tab state: {e}")
         print(f"Total tabs saved: {len(tab_state)}")
         return tab_state
+    
+    def get_api_tabs(self):
+        """Get all tabs that are API/remote playlists."""
+        api_tabs = []
+        for tab_name in self.notebook.tabs():
+            tab = self.notebook.nametowidget(tab_name)
+            if hasattr(tab, 'playlist') and tab.playlist.type == Playlist.PlaylistType.API:
+                api_tabs.append(tab)
+        return api_tabs
+    
+    def get_tab_by_source(self, source_id: str):
+        """Get a tab by its source ID."""
+        for tab_name in self.notebook.tabs():
+            tab = self.notebook.nametowidget(tab_name)
+            if (hasattr(tab, 'playlist') and 
+                tab.playlist.type == Playlist.PlaylistType.API and
+                getattr(tab.playlist, 'source_id', None) == source_id):
+                return tab
+        return None
     def get_tabs(self):
         tabs = []
         for tab_name in self.notebook.tabs():
@@ -72,9 +93,13 @@ class PlaylistNotebookView:
         return selected_tab.playlist
 
     def remove_tab(self, tab):
-        # If this is an Remote Playlist tab, update the menu bar checkbox
+        # If this is a Remote Playlist tab, update the menu bar and currently playing bar
         if hasattr(tab, 'playlist') and hasattr(tab.playlist, 'type') and tab.playlist.type == Playlist.PlaylistType.API:
-            self.controller.menu_bar.show_api_playlist.set(False)
+            if hasattr(tab.playlist, 'source_id') and tab.playlist.source_id:
+                source_id = tab.playlist.source_id
+                self.controller.menu_bar.set_source_connected(source_id, False)
+                self.controller.container_view.remove_station(source_id)
+                self.controller._currently_playing_contexts.pop(source_id, None)
         self.controller.controller_actions.close_playlist(tab.playlist)
         self.notebook.forget(tab)
 

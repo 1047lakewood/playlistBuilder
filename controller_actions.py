@@ -32,7 +32,8 @@ class ControllerActions():
             "save_profile": self.controller.profile_loader.save_profile,
             "load_profile": self.controller.profile_loader.load_profile,
             "manage_profiles": self.controller.profile_loader.manage_profiles,
-            "toggle_api_playlist": self.toggle_api_playlist
+            "reload_api_playlist": self.reload_api_playlist_action,
+            "disconnect_all_remotes": self.disconnect_all_remotes
         }
         self.clipboard = []
         self.dialog_open = False
@@ -465,106 +466,149 @@ class ControllerActions():
         messagebox.showinfo("Convert to MP3", result_message, parent=self.controller.root)
 
     def reload_api_playlist_action(self, event=None):
-        """Reload the Remote Playlist while preserving the current scroll position if the tab is already open."""
-        # Locate the Remote Playlist tab (if any)
-        api_tab = None
-        for tab_view in self.controller.notebook_view.get_tabs():
-            if tab_view.playlist.type == Playlist.PlaylistType.API:
-                api_tab = tab_view
-                break
-
-        if api_tab:
-            # Preserve current vertical scroll position of the Treeview
-            try:
-                yview = api_tab.tree.yview()  # returns a tuple (first, last) as fractions
-                yview_first = yview[0] if yview else 0.0
-            except Exception:
-                yview_first = 0.0
-
-            # Reload the Remote Playlist from the service
-            api_playlist = self.controller.playlist_service.reload_api_playlist()
-            if api_playlist is None:
-                messagebox.showerror("Reload Error", "Failed to reload the Remote Playlist.")
-                return
-
-            # Ensure intros / metadata are up-to-date
-            self.controller.playlist_service.check_for_intros_and_exists(api_playlist)
-
-            # Update the existing tab's playlist instance with the freshly loaded one
-            api_tab.playlist.tracks = list(api_playlist.tracks)  # copy to avoid shared state surprises
-            api_tab.playlist.path = api_playlist.path
-            api_tab.playlist.type = api_playlist.type
-
-            # Also update the central store reference if this is the main Remote Playlist object
-            if self.controller.playlist_service.store.api_playlist:
-                self.controller.playlist_service.store.api_playlist.tracks = list(api_playlist.tracks)
-                self.controller.playlist_service.store.api_playlist.path = api_playlist.path
-                self.controller.playlist_service.store.api_playlist.type = api_playlist.type
-
-            # Reload the rows in the UI (this will rebuild the tree)
-            api_tab.reload_rows()
-
-            # Restore the vertical scroll position
-            try:
-                api_tab.tree.update_idletasks()  # ensure geometry is updated before scrolling
-                api_tab.tree.yview_moveto(yview_first)
-            except Exception:
-                pass  # Failing to restore scroll shouldn't crash the reload
-
-            # Ensure the tab is selected (optional – keeps UX consistent)
-            self.controller.notebook_view.notebook.select(str(api_tab))
-        else:
-            # If no API tab is open, just toggle it on (standard behaviour)
-            self.controller.menu_bar.show_api_playlist.set(True)
-            self.toggle_api_playlist()
-
-    def toggle_api_playlist(self, path=None, title="MAIN", event=None, reload_if_open=False):
-        """Show or hide the Remote Playlist based on the menu checkbox state"""
+        """Reload the currently selected Remote Playlist while preserving scroll position."""
+        # Get the currently selected tab
         try:
-            # Get the current state from the menu bar
-            show_api = self.controller.menu_bar.show_api_playlist.get()
-            
-            # Find if Remote Playlist tab is already open
-            api_tab = None
-            for tab_view in self.controller.notebook_view.get_tabs(): # Iterate through PlaylistTabView objects
-                if tab_view.playlist.type == Playlist.PlaylistType.API:
-                    api_tab = tab_view
+            selected_tab = self.controller.notebook_view.get_selected_tab()
+            if not selected_tab or selected_tab.playlist.type != Playlist.PlaylistType.API:
+                # Find any API tab
+                api_tabs = [t for t in self.controller.notebook_view.get_tabs() 
+                           if t.playlist.type == Playlist.PlaylistType.API]
+                if not api_tabs:
+                    messagebox.showinfo("Reload", "No remote playlist is currently open.")
+                    return
+                selected_tab = api_tabs[0]
+        except Exception:
+            messagebox.showinfo("Reload", "No remote playlist is currently open.")
+            return
+
+        source_id = selected_tab.playlist.source_id
+        if not source_id:
+            messagebox.showerror("Reload Error", "Cannot determine source for this playlist.")
+            return
+
+        # Preserve current vertical scroll position
+        try:
+            yview = selected_tab.tree.yview()
+            yview_first = yview[0] if yview else 0.0
+        except Exception:
+            yview_first = 0.0
+
+        # Reload the Remote Playlist from the service
+        api_playlist = self.controller.playlist_service.reload_api_playlist(source_id)
+        if api_playlist is None:
+            messagebox.showerror("Reload Error", f"Failed to reload playlist from {source_id}.")
+            return
+
+        # Ensure intros / metadata are up-to-date
+        self.controller.playlist_service.check_for_intros_and_exists(api_playlist)
+
+        # Update the existing tab's playlist instance
+        selected_tab.playlist.tracks = list(api_playlist.tracks)
+        selected_tab.playlist.path = api_playlist.path
+        selected_tab.playlist.type = api_playlist.type
+
+        # Reload the rows in the UI
+        selected_tab.reload_rows()
+
+        # Restore the vertical scroll position
+        try:
+            selected_tab.tree.update_idletasks()
+            selected_tab.tree.yview_moveto(yview_first)
+        except Exception:
+            pass
+
+        # Ensure the tab is selected
+        self.controller.notebook_view.notebook.select(str(selected_tab))
+    
+    def disconnect_all_remotes(self, event=None):
+        """Disconnect all remote playlists."""
+        api_tabs = [t for t in self.controller.notebook_view.get_tabs() 
+                   if t.playlist.type == Playlist.PlaylistType.API]
+        
+        for tab in api_tabs:
+            source_id = tab.playlist.source_id
+            if source_id:
+                self.toggle_remote_source(source_id, False)
+    
+    def toggle_remote_source(self, source_id: str, show: bool):
+        """Show or hide a specific remote playlist source.
+        
+        Args:
+            source_id: The ID of the remote source (e.g., "104.7", "88.7")
+            show: True to connect and show, False to disconnect and hide
+        """
+        try:
+            # Get source info
+            sources = self.controller.playlist_service.get_available_sources()
+            source_name = source_id
+            for sid, name in sources:
+                if sid == source_id:
+                    source_name = name
                     break
             
-            if show_api:
-                # Show Remote Playlist
-                if api_tab is None:  # Only load if not already loaded
-                    api_playlist = self.controller.playlist_service.load_api_playlist()
-                    if path:
-                        api_playlist.path = path
+            # Find if tab for this source is already open
+            existing_tab = None
+            for tab_view in self.controller.notebook_view.get_tabs():
+                if (tab_view.playlist.type == Playlist.PlaylistType.API and 
+                    tab_view.playlist.source_id == source_id):
+                    existing_tab = tab_view
+                    break
+            
+            if show:
+                # Connect and show
+                if existing_tab is None:
+                    # Load the playlist from this source
+                    api_playlist = self.controller.playlist_service.load_api_playlist(source_id)
+                    if api_playlist is None:
+                        # Show error but don't crash
+                        status, message = self.controller.playlist_service.get_source_status(source_id)
+                        messagebox.showerror(
+                            "Connection Failed", 
+                            f"Could not connect to {source_name}.\n\n{message}"
+                        )
+                        # Update menu checkbox to reflect failure
+                        self.controller.menu_bar.set_source_connected(source_id, False)
+                        return
+                    
                     self.controller.playlist_service.check_for_intros_and_exists(api_playlist)
-                    # Add the tab and get the tab ID
-                    tab = self.controller.notebook_view.add_tab(api_playlist, title)
-                    # Move the tab to the leftmost position
+                    
+                    # Add the tab
+                    tab = self.controller.notebook_view.add_tab(api_playlist, source_name)
                     if tab:
                         tab_id = str(tab)
+                        # Insert at position based on source order
                         self.controller.notebook_view.notebook.insert(0, tab_id)
-                        # Select the tab
                         self.controller.notebook_view.notebook.select(tab_id)
-                    print("Remote Playlist loaded and displayed")
+                    
+                    print(f"Remote Playlist '{source_name}' loaded and displayed")
                 else:
-                    # If tab exists, just select it and move to leftmost position
-                    tab_id = str(api_tab)
-                    self.controller.notebook_view.notebook.insert(0, tab_id)
+                    # Tab exists, just select it
+                    tab_id = str(existing_tab)
                     self.controller.notebook_view.notebook.select(tab_id)
-                # Show the currently playing bar
+                
+                # Show the currently playing bar if any remote is connected
                 self.controller.container_view.show_currently_playing_bar()
+                
+                # Update menu
+                self.controller.menu_bar.set_source_connected(source_id, True)
             else:
-                # Hide Remote Playlist
-                if api_tab is not None:
-                    self.controller.notebook_view.remove_tab(api_tab)
-                    print("Remote Playlist hidden")
-                # Hide the currently playing bar
-                self.controller.container_view.hide_currently_playing_bar()
-                if reload_if_open:
-                    self.toggle_api_playlist(path=path, title=title)
+                # Disconnect and hide
+                if existing_tab is not None:
+                    self.controller.notebook_view.remove_tab(existing_tab)
+                    print(f"Remote Playlist '{source_name}' disconnected")
+                
+                # Update menu
+                self.controller.menu_bar.set_source_connected(source_id, False)
+                
+                # Remove this station from the currently playing bar
+                self.controller.container_view.remove_station(source_id)
+                
+                # Clear the currently playing context for this source
+                self.controller._currently_playing_contexts.pop(source_id, None)
+                    
         except Exception as e:
-            print(f"Error toggling Remote Playlist: {e}")
+            print(f"Error toggling remote source {source_id}: {e}")
             import traceback
             traceback.print_exc()
 

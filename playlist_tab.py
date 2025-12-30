@@ -1,9 +1,10 @@
-from tkinter import ttk, Frame
+from tkinter import ttk, Frame, Label
 from tkinterdnd2 import TkinterDnD, DND_FILES
 from PlaylistService import playlist_service
+from PlaylistService.api_playlist_manager import ConnectionStatus
 import utils
 from models.playlist import Playlist
-from typing import List
+from typing import List, Optional
 import os
 from playlist_tab_subviews import PlaylistTabTreeView, PlaylistTabContextMenu, SearchFrame
 
@@ -19,6 +20,10 @@ class PlaylistTabView(ttk.Frame):
         self.title = title
         self.callbacks = callbacks
         self.current_playing_track_id = None
+        
+        # Connection status tracking for API playlists
+        self._connection_status = ConnectionStatus.DISCONNECTED
+        self._is_api_playlist = playlist.type == Playlist.PlaylistType.API
 
         self.drop_target_register(DND_FILES)
         self.dnd_bind('<<Drop>>', self.callbacks["drop_files_in_tab"])
@@ -29,6 +34,14 @@ class PlaylistTabView(ttk.Frame):
         # Create a container frame for the tree and search frame
         self.container = Frame(self)
         self.container.pack(fill="both", expand=True)
+        
+        # Connection status bar (for API playlists) - initially hidden
+        self._status_bar_frame: Optional[Frame] = None
+        self._status_label: Optional[Label] = None
+        self._reconnect_btn: Optional[ttk.Button] = None
+        
+        if self._is_api_playlist:
+            self._create_status_bar()
 
         self.tree = PlaylistTabTreeView(self.container, callbacks)
         self.tree.bind("<Button-3>", lambda event: self.context_menu.show(event))
@@ -44,10 +57,175 @@ class PlaylistTabView(ttk.Frame):
         self.reload_rows()
         
         # If this is an Remote Playlist, start checking for the currently playing track
-        if self.playlist.type == Playlist.PlaylistType.API:
+        if self._is_api_playlist:
+            self._register_status_callback()
             self.update_current_playing_track()
             # Schedule periodic updates every 2 seconds
             self.after(2000, self.periodic_update_current_playing_track)
+    
+    def _create_status_bar(self):
+        """Create the connection status bar for API playlists."""
+        self._status_bar_frame = Frame(self.container, bg="#fff3cd", height=32)
+        
+        self._status_label = Label(
+            self._status_bar_frame,
+            text="⟳ Connecting...",
+            bg="#fff3cd",
+            fg="#856404",
+            font=("Segoe UI", 9),
+            anchor="w",
+            padx=10
+        )
+        self._status_label.pack(side="left", fill="x", expand=True)
+        
+        self._reconnect_btn = ttk.Button(
+            self._status_bar_frame,
+            text="Reconnect",
+            command=self._attempt_reconnect,
+            width=10
+        )
+        # Don't pack reconnect button initially - only shown on disconnect
+        
+        # Initially hidden - will show if disconnected
+        # self._status_bar_frame.pack(side="top", fill="x", pady=(0, 2))
+    
+    def _register_status_callback(self):
+        """Register for connection status updates."""
+        if not self._is_api_playlist or not self.playlist.source_id:
+            return
+        
+        manager = self.controller.playlist_service.get_api_manager(self.playlist.source_id)
+        if manager:
+            manager.add_status_callback(self._on_connection_status_change)
+            # Set initial status based on manager's actual status
+            # If manager is connected (playlist loaded successfully), show connected
+            if manager.is_connected or manager.playlist is not None:
+                self._connection_status = ConnectionStatus.CONNECTED
+                self._update_tab_title(connected=True)
+            else:
+                self._connection_status = manager.status
+                self._update_tab_title(connected=False)
+    
+    def _on_connection_status_change(self, manager, status: ConnectionStatus, message: str):
+        """Handle connection status changes."""
+        # Schedule UI update on main thread
+        self.after(0, lambda: self._update_status_display(status, message))
+    
+    def _update_status_display(self, status: ConnectionStatus, message: str = ""):
+        """Update the status bar display based on connection status."""
+        old_status = self._connection_status
+        self._connection_status = status
+
+        if not self._status_bar_frame:
+            return
+
+        if status == ConnectionStatus.CONNECTED:
+            # Cancel any pending disconnect timer
+            if hasattr(self, '_disconnect_timer') and self._disconnect_timer:
+                self.after_cancel(self._disconnect_timer)
+                self._disconnect_timer = None
+            
+            # Hide status bar when connected
+            if self._status_bar_frame.winfo_ismapped():
+                self._status_bar_frame.pack_forget()
+                self._reconnect_btn.pack_forget()
+            # Update tab title to show connected
+            self._update_tab_title(connected=True)
+
+        elif status == ConnectionStatus.CONNECTING:
+            # Don't show status bar for connecting state - too intrusive during normal polling
+            # Keep the current tab title state
+            pass
+
+        elif status == ConnectionStatus.DISCONNECTED:
+            # Only show disconnected status after a brief delay to avoid flashing
+            if not hasattr(self, '_disconnect_timer'):
+                self._disconnect_timer = None
+
+            # Cancel any existing timer
+            if self._disconnect_timer:
+                self.after_cancel(self._disconnect_timer)
+
+            # Schedule to show disconnected status after 3 seconds of persistent disconnection
+            self._disconnect_timer = self.after(3000, lambda: self._show_disconnected_status())
+
+        elif status in (ConnectionStatus.ERROR, ConnectionStatus.TIMEOUT):
+            # Cancel any disconnect timer
+            if hasattr(self, '_disconnect_timer') and self._disconnect_timer:
+                self.after_cancel(self._disconnect_timer)
+                self._disconnect_timer = None
+
+            # Show error status immediately
+            self._status_bar_frame.configure(bg="#f8d7da")
+            error_icon = "⚠" if status == ConnectionStatus.ERROR else "⏱"
+            self._status_label.configure(
+                text=f"{error_icon} {message or 'Connection failed'}",
+                bg="#f8d7da",
+                fg="#721c24"
+            )
+            self._reconnect_btn.pack(side="right", padx=5, pady=2)
+            if not self._status_bar_frame.winfo_ismapped():
+                self._status_bar_frame.pack(side="top", fill="x", pady=(0, 2), before=self.tree)
+            self._update_tab_title(connected=False)
+
+    def _show_disconnected_status(self):
+        """Show the disconnected status bar after delay."""
+        if self._connection_status == ConnectionStatus.DISCONNECTED:
+            self._status_bar_frame.configure(bg="#e2e3e5")
+            self._status_label.configure(
+                text="○ Disconnected",
+                bg="#e2e3e5",
+                fg="#383d41"
+            )
+            self._reconnect_btn.pack(side="right", padx=5, pady=2)
+            if not self._status_bar_frame.winfo_ismapped():
+                self._status_bar_frame.pack(side="top", fill="x", pady=(0, 2), before=self.tree)
+            self._update_tab_title(connected=False)
+    
+    def _update_tab_title(self, connected: bool):
+        """Update the tab title to indicate connection status."""
+        notebook = self.master
+        if not notebook:
+            return
+        
+        base_title = self.title.replace(" ●", "").replace(" ○", "").strip()
+        if connected:
+            new_title = f"{base_title} ●"
+        else:
+            new_title = f"{base_title} ○"
+        
+        try:
+            notebook.tab(self, text=new_title)
+        except Exception:
+            pass
+    
+    def _attempt_reconnect(self):
+        """Attempt to reconnect to the remote source."""
+        if not self._is_api_playlist or not self.playlist.source_id:
+            return
+        
+        self._update_status_display(ConnectionStatus.CONNECTING, "Reconnecting...")
+        
+        # Run reconnection in background thread
+        import threading
+        def reconnect():
+            try:
+                playlist = self.controller.playlist_service.reload_api_playlist(self.playlist.source_id)
+                if playlist:
+                    self.playlist.tracks = list(playlist.tracks)
+                    self.after(0, self.reload_rows)
+            except Exception as e:
+                print(f"Reconnection failed: {e}")
+        
+        thread = threading.Thread(target=reconnect, daemon=True)
+        thread.start()
+    
+    @property
+    def is_connected(self) -> bool:
+        """Check if this tab's playlist source is connected."""
+        if not self._is_api_playlist:
+            return True  # Local playlists are always "connected"
+        return self._connection_status == ConnectionStatus.CONNECTED
 
     def is_empty(self):
         return len(self.playlist.tracks) == 0
@@ -341,8 +519,14 @@ class PlaylistTabView(ttk.Frame):
             return
 
         try:
+            # Get the API manager for this playlist's source
+            manager = self.controller.playlist_service.get_api_manager_for_playlist(self.playlist)
+            if not manager:
+                self.controller.notify_currently_playing(None, self, False)
+                return
+            
             # Get the current track from the API
-            current_track = self.controller.playlist_service.api_manager.get_current_track()
+            current_track = manager.get_current_track()
             if not current_track:
                 if self.current_playing_track_id:
                     try:
@@ -382,14 +566,6 @@ class PlaylistTabView(ttk.Frame):
                     if "currently_playing" not in current_tags:
                         current_tags.append("currently_playing")
                     self.tree.item(found_item_id, tags=tuple(current_tags))
-                    # Ensure the track is visible and focused if this tab is currently selected
-                    # self.tree.see(found_item_id) # Disabled scrolling to playing track
-                    
-                    # Check if this tab is currently selected
-                    # if self.controller.notebook_view.get_selected_tab() == self: # Disabled selection/focus
-                        # Focus on the currently playing track
-                        # self.tree.selection_set(found_item_id) # Disabled selection/focus
-                        # self.tree.focus(found_item_id) # Disabled selection/focus
                     
                 # Update the current playing track ID
                 self.current_playing_track_id = found_item_id

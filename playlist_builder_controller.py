@@ -58,19 +58,59 @@ class PlaylistBuilderController:
         combined_callbacks = {**self.actions, **self.callbacks}
         self.menu_bar.create_menu_bar(combined_callbacks, self.get_binding_display_names())
         self.root.config(menu=self.menu_bar)
+        
+        # Populate remote sources menu after playlist_service is initialized
+        self._setup_remote_sources_menu()
 
-        
-        
-
-        
         self.notebook_view = PlaylistNotebookView(self.container_view, self, self.callbacks)
         self.tree_interaction_controller = TreeInteractionController(self)
 
-        self._currently_playing_context = None
-        self.container_view.update_currently_playing_bar()
+        # Track currently playing context per source_id
+        self._currently_playing_contexts = {}
 
-        current_profile = self.persistence.get_current_profile_name() 
+        current_profile = self.persistence.get_current_profile_name()
         self.profile_loader.load_profile(current_profile)
+
+        # Auto-connect all available remote sources
+        self._auto_connect_all_remote_sources()
+
+    def refresh_remote_sources_menu(self):
+        """Refresh the remote sources menu with current configuration."""
+        self._setup_remote_sources_menu()
+
+    def _auto_connect_all_remote_sources(self):
+        """Automatically connect all available remote playlist sources."""
+        try:
+            sources = self.playlist_service.get_available_sources()
+            if not sources:
+                print("No remote sources configured for auto-connection.")
+                return
+
+            print(f"Auto-connecting {len(sources)} remote playlist source(s): {sources}")
+
+            # Update status bar to show connecting message
+            import tkinter.messagebox as messagebox
+            connecting_msg = f"Connecting to {len(sources)} remote source(s)..."
+            self.root.title(f"Playlist Builder - {connecting_msg}")
+
+            for source_id, source_name in sources:
+                print(f"Attempting to connect to {source_name} ({source_id})...")
+                try:
+                    self.controller_actions.toggle_remote_source(source_id, True)
+                    print(f"Successfully connected to {source_name}")
+                except Exception as e:
+                    print(f"Failed to connect to {source_name}: {e}")
+                    # Don't show error dialogs during auto-connect, just log
+                    continue
+
+            # Reset title
+            current_profile = self.persistence.get_current_profile_name()
+            self.root.title(f"Playlist Builder - {current_profile}")
+
+        except Exception as e:
+            print(f"Error during auto-connection setup: {e}")
+            import traceback
+            traceback.print_exc()
 
     # tree interaction - tree events
     def button_down(self, event): self.tree_interaction_controller.button_down(event)
@@ -110,6 +150,14 @@ class PlaylistBuilderController:
             if callback_name in self.bindings.bindings:
                 display_names[callback_name] = self.bindings.get_display_name(callback_name)
         return display_names
+    
+    def _setup_remote_sources_menu(self):
+        """Setup the remote sources submenu with available sources."""
+        sources = self.playlist_service.get_available_sources()
+        self.menu_bar.populate_remote_sources(
+            sources, 
+            self.controller_actions.toggle_remote_source
+        )
 
     def open_file_location(self):
         selected_tracks = self.get_selected_rows()[2]
@@ -167,31 +215,74 @@ class PlaylistBuilderController:
             tab_view: PlaylistTabView where the track resides.
             can_focus: Whether we can scroll to the track.
         """
+        # Get source info from the tab's playlist
+        source_id = getattr(tab_view.playlist, 'source_id', None) if tab_view else None
+        source_name = self._get_source_name(source_id) if source_id else None
+        
         if not track:
-            self._currently_playing_context = None
-            self.container_view.update_currently_playing_bar()
+            if source_id:
+                self._currently_playing_contexts.pop(source_id, None)
+                self.container_view.update_currently_playing_bar(
+                    text="Currently Playing: —",
+                    source_id=source_id,
+                    source_name=source_name
+                )
             return
 
         display_text = self._format_track_display(track)
         bar_text = f"Currently Playing: {display_text}"
 
         if can_focus and track.path:
-            self._currently_playing_context = {"tab": tab_view, "track_path": track.path}
-            self.container_view.update_currently_playing_bar(bar_text, clickable=True, on_click=self.scroll_to_currently_playing)
+            context = {"tab": tab_view, "track_path": track.path}
+            if source_id:
+                self._currently_playing_contexts[source_id] = context
+            self.container_view.update_currently_playing_bar(
+                bar_text, 
+                clickable=True, 
+                on_click=lambda sid=source_id: self.scroll_to_currently_playing(sid),
+                source_id=source_id,
+                source_name=source_name
+            )
         else:
-            self._currently_playing_context = {"tab": tab_view, "track_path": track.path if track.path else None}
-            self.container_view.update_currently_playing_bar(bar_text, clickable=False)
+            context = {"tab": tab_view, "track_path": track.path if track.path else None}
+            if source_id:
+                self._currently_playing_contexts[source_id] = context
+            self.container_view.update_currently_playing_bar(
+                bar_text, 
+                clickable=False,
+                source_id=source_id,
+                source_name=source_name
+            )
+    
+    def _get_source_name(self, source_id):
+        """Get the display name for a source_id."""
+        if not source_id:
+            return None
+        for sid, name in self.playlist_service.get_available_sources():
+            if sid == source_id:
+                return name
+        return source_id  # Fallback to ID if name not found
 
-    def scroll_to_currently_playing(self, event=None):
-        """Focus the tree on the currently playing track."""
-        if not self._currently_playing_context:
+    def scroll_to_currently_playing(self, source_id=None, event=None):
+        """Focus the tree on the currently playing track.
+        
+        Args:
+            source_id: The source to scroll to. If None, uses the first available context.
+        """
+        # Get the context for this source
+        if source_id and source_id in self._currently_playing_contexts:
+            context = self._currently_playing_contexts[source_id]
+        elif self._currently_playing_contexts:
+            # Fallback to first available
+            context = next(iter(self._currently_playing_contexts.values()))
+        else:
             return
 
-        track_path = self._currently_playing_context.get("track_path")
+        track_path = context.get("track_path")
         if not track_path:
             return
 
-        tab_view = self._currently_playing_context.get("tab")
+        tab_view = context.get("tab")
         tab_view = self._resolve_tab_for_track(tab_view, track_path)
         if not tab_view:
             return
@@ -237,20 +328,23 @@ class PlaylistBuilderController:
             messagebox.showerror("Error", f"Failed to open settings dialog: {str(e)}")
     
     def refresh_theme_colors(self):
-        """Refresh theme colors for all widgets after settings change."""
+        """Refresh theme colors and remote sources menu for all widgets after settings change."""
         try:
             # Refresh container view (currently playing bar)
             if hasattr(self, 'container_view') and hasattr(self.container_view, 'refresh_theme_colors'):
                 self.container_view.refresh_theme_colors()
-            
+
             # Refresh all notebook tabs
             if hasattr(self, 'notebook_view') and hasattr(self.notebook_view, 'refresh_theme_colors'):
                 self.notebook_view.refresh_theme_colors()
-            
+
             # Refresh prelisten view if it exists
             if hasattr(self, 'container_view') and self.container_view.prelisten_view:
                 if hasattr(self.container_view.prelisten_view, 'refresh_theme_colors'):
                     self.container_view.prelisten_view.refresh_theme_colors()
+
+            # Refresh remote sources menu
+            self.refresh_remote_sources_menu()
         except Exception as e:
             print(f"Error refreshing theme colors: {e}")
 
@@ -271,7 +365,7 @@ class PlaylistBuilderController:
             
             # Add content
             Label(about_window, text="Playlist Builder 2", font=("Helvetica", 16, "bold")).pack(pady=(20, 5))
-            Label(about_window, text="Version 0.5.2").pack()
+            Label(about_window, text="Version 0.6").pack()
             Label(about_window, text="Developed by AM Leonard").pack(pady=(5, 15))
             Label(about_window, text="for Harav Shlomo Perr").pack(pady=(0, 5))
             Label(about_window, text="104.7 (88.7) Lakewood").pack(pady=(0, 5))

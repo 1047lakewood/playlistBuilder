@@ -1,7 +1,7 @@
-from gc import callbacks
 import tkinter as tk
 from tkinter import messagebox, filedialog
 from tkinter.font import Font
+
 
 class MenuBar(tk.Menu):
     
@@ -9,11 +9,18 @@ class MenuBar(tk.Menu):
         super().__init__(master)
         self.master = master
         self.callbacks = {}
+        
+        # Track which remote sources are shown (by source_id)
+        self._remote_source_vars: dict[str, tk.BooleanVar] = {}
+        self._remote_source_menu: tk.Menu = None
+        
+        # Legacy variable for backwards compatibility
         self.show_api_playlist = tk.BooleanVar()
-        self.show_api_playlist.set(False) # Default to not showing
+        self.show_api_playlist.set(False)
 
     def create_menu_bar(self, callbacks, display_names):
         self.callbacks = callbacks
+        
         # File Menu
         file_menu = tk.Menu(self, tearoff=0)
         if "open" in self.callbacks:
@@ -22,9 +29,6 @@ class MenuBar(tk.Menu):
             file_menu.add_command(label=f"Save", command=self.callbacks["save"], accelerator=display_names["save"])
         if "save_as" in self.callbacks:
             file_menu.add_command(label=f"Save As", command=self.callbacks["save_as"], accelerator=display_names["save_as"])
-        # Add separator before profile options
-        # (first separator now used only for grouping open/save and profiles)
-# removed settings here
         
         # Profile submenu
         profile_menu = tk.Menu(file_menu, tearoff=0)
@@ -63,12 +67,40 @@ class MenuBar(tk.Menu):
         
         self.add_cascade(label="Edit", menu=edit_menu)
         
+        # Playlist Menu (NEW - for remote sources)
+        playlist_menu = tk.Menu(self, tearoff=0)
+        
+        # Remote Sources submenu
+        self._remote_source_menu = tk.Menu(playlist_menu, tearoff=0)
+        playlist_menu.add_cascade(label="Remote Sources", menu=self._remote_source_menu)
+        
+        # Separator and refresh option
+        playlist_menu.add_separator()
+        if "reload_api_playlist" in self.callbacks:
+            playlist_menu.add_command(
+                label="Refresh Active Remote", 
+                command=self.callbacks["reload_api_playlist"],
+                accelerator=display_names.get("reload_api_playlist", "")
+            )
+        
+        if "disconnect_all_remotes" in self.callbacks:
+            playlist_menu.add_command(
+                label="Disconnect All", 
+                command=self.callbacks["disconnect_all_remotes"]
+            )
+        
+        self.add_cascade(label="Playlist", menu=playlist_menu)
+        
         # View Menu
         view_menu = tk.Menu(self, tearoff=0)
+        # Legacy toggle - kept for backwards compatibility
         if "toggle_api_playlist" in self.callbacks:
-            view_menu.add_checkbutton(label="Show Remote Playlist", variable=self.show_api_playlist, 
-                                     command=self.callbacks["toggle_api_playlist"], 
-                                     accelerator=display_names.get("toggle_api_playlist", ""))
+            view_menu.add_checkbutton(
+                label="Show Remote Playlist (Legacy)", 
+                variable=self.show_api_playlist, 
+                command=self.callbacks["toggle_api_playlist"], 
+                accelerator=display_names.get("toggle_api_playlist", "")
+            )
         self.add_cascade(label="View", menu=view_menu)
         
         # Help Menu
@@ -76,3 +108,65 @@ class MenuBar(tk.Menu):
         if "about" in self.callbacks:
             help_menu.add_command(label="About", command=self.callbacks["about"])
         self.add_cascade(label="Help", menu=help_menu)
+    
+    def populate_remote_sources(self, sources: list, toggle_callback):
+        """Populate the remote sources submenu with available sources.
+        
+        Args:
+            sources: List of (source_id, name) tuples
+            toggle_callback: Function to call when a source is toggled, 
+                           receives (source_id, show: bool)
+        """
+        # Clear existing items
+        self._remote_source_menu.delete(0, tk.END)
+        self._remote_source_vars.clear()
+        
+        if not sources:
+            self._remote_source_menu.add_command(label="No sources configured", state=tk.DISABLED)
+            return
+        
+        for source_id, name in sources:
+            var = tk.BooleanVar(value=False)
+            self._remote_source_vars[source_id] = var
+            
+            self._remote_source_menu.add_checkbutton(
+                label=name,
+                variable=var,
+                command=lambda sid=source_id, v=var: toggle_callback(sid, v.get())
+            )
+        
+        # Add separator and "Connect All" / "Disconnect All" options
+        self._remote_source_menu.add_separator()
+        self._remote_source_menu.add_command(
+            label="Connect All",
+            command=lambda: self._connect_all_sources(toggle_callback)
+        )
+        self._remote_source_menu.add_command(
+            label="Disconnect All",
+            command=lambda: self._disconnect_all_sources(toggle_callback)
+        )
+    
+    def _connect_all_sources(self, toggle_callback):
+        """Connect all remote sources."""
+        for source_id, var in self._remote_source_vars.items():
+            if not var.get():
+                var.set(True)
+                toggle_callback(source_id, True)
+    
+    def _disconnect_all_sources(self, toggle_callback):
+        """Disconnect all remote sources."""
+        for source_id, var in self._remote_source_vars.items():
+            if var.get():
+                var.set(False)
+                toggle_callback(source_id, False)
+    
+    def set_source_connected(self, source_id: str, connected: bool):
+        """Update the checkbox state for a source."""
+        if source_id in self._remote_source_vars:
+            self._remote_source_vars[source_id].set(connected)
+    
+    def is_source_shown(self, source_id: str) -> bool:
+        """Check if a source is currently shown."""
+        if source_id in self._remote_source_vars:
+            return self._remote_source_vars[source_id].get()
+        return False

@@ -104,19 +104,20 @@ class ProfileLoader:
                 
             profile_name = selected_profile
         
-        # Clear current tabs and reset Remote Playlist state
+        # Clear current tabs
         notebook_view = self.controller.notebook_view
         notebook_view.remove_all_tabs()
-        self.controller.menu_bar.show_api_playlist.set(False)
 
         # Load playlists from the selected profile
         playlists = persistence.load_profile_settings(profile_name)
         for playlist_info in playlists:
             if playlist_info["type"] == "api":
-                # For Remote Playlists, set the flag and then explicitly toggle to load it
-                self.controller.menu_bar.show_api_playlist.set(True)
-                self.controller.controller_actions.toggle_api_playlist(path = playlist_info["path"], title = playlist_info["title"])
-                # The actual loading will happen in reload_open_playlists
+                # For Remote Playlists, use the source_id
+                source_id = playlist_info.get("source_id")
+                if source_id:
+                    self.controller.controller_actions.toggle_remote_source(source_id, True)
+                else:
+                    print(f"Warning: Skipping API playlist without source_id (legacy format)")
             else:
                 # For regular playlists, load them directly
                 self.controller.load_playlist(playlist_info["path"], playlist_info["title"])
@@ -163,11 +164,21 @@ class ProfileLoader:
         print(f"Saving profile {profile_name} with {len(tab_state)} tabs")
         
         for playlist in tab_state:
-            if playlist[2] == "api":
-                playlists.append({"title": playlist[0], "path": playlist[1], "type": "api"})
-                continue
-            playlists.append({"title": playlist[0], "path": playlist[1], "type": "local"})
-            print(f"Added to profile: {playlist[0]}, {playlist[1]}, {playlist[2]}")
+            title = playlist[0]
+            path = playlist[1]
+            ptype = playlist[2]
+            source_id = playlist[3] if len(playlist) > 3 else None
+            
+            if ptype == "api":
+                playlists.append({
+                    "title": title, 
+                    "path": path, 
+                    "type": "api",
+                    "source_id": source_id
+                })
+            else:
+                playlists.append({"title": title, "path": path, "type": "local"})
+            print(f"Added to profile: {title}, {path}, {ptype}")
             
         # Save to profile
         persistence.save_profile_settings(playlists, profile_name)

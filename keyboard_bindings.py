@@ -11,7 +11,6 @@ class KeyboardBindings:
         "cut": (["<Control-x>", "<Control-X>"], "Ctrl+X"),
         "delete": (["<Delete>"], "Delete"),
         "search": (["<Control-f>", "<Control-F>"], "Ctrl+F"),
-        # "toggle_api_playlist": (["<Control-a>"], "Ctrl+A"),
     }
     
     def __init__(self, root):
