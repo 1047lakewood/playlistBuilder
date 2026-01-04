@@ -13,10 +13,6 @@ class MenuBar(tk.Menu):
         # Track which remote sources are shown (by source_id)
         self._remote_source_vars: dict[str, tk.BooleanVar] = {}
         self._remote_source_menu: tk.Menu = None
-        
-        # Legacy variable for backwards compatibility
-        self.show_api_playlist = tk.BooleanVar()
-        self.show_api_playlist.set(False)
 
     def create_menu_bar(self, callbacks, display_names):
         self.callbacks = callbacks
@@ -90,19 +86,7 @@ class MenuBar(tk.Menu):
             )
         
         self.add_cascade(label="Playlist", menu=playlist_menu)
-        
-        # View Menu
-        view_menu = tk.Menu(self, tearoff=0)
-        # Legacy toggle - kept for backwards compatibility
-        if "toggle_api_playlist" in self.callbacks:
-            view_menu.add_checkbutton(
-                label="Show Remote Playlist (Legacy)", 
-                variable=self.show_api_playlist, 
-                command=self.callbacks["toggle_api_playlist"], 
-                accelerator=display_names.get("toggle_api_playlist", "")
-            )
-        self.add_cascade(label="View", menu=view_menu)
-        
+
         # Help Menu
         help_menu = tk.Menu(self, tearoff=0)
         if "about" in self.callbacks:
