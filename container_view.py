@@ -65,6 +65,15 @@ class ContainerView(Frame):
     def close_prelisten_view(self):
         """Close the prelisten view and restore the notebook view"""
         if self.prelisten_view:
+            # Properly stop playback and clean up before destroying
+            try:
+                self.prelisten_view._stop_ui_updater()
+                import pygame
+                if pygame.mixer.get_init() and pygame.mixer.music.get_busy():
+                    pygame.mixer.music.stop()
+                self.prelisten_view.playing = False
+            except Exception as e:
+                print(f"Error cleaning up prelisten view: {str(e)}")
             self.prelisten_view.destroy()
             self.prelisten_view = None
             
