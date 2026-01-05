@@ -101,7 +101,13 @@ class PlaylistNotebookView:
                 self.controller.container_view.remove_station(source_id)
                 self.controller._currently_playing_contexts.pop(source_id, None)
         self.controller.controller_actions.close_playlist(tab.playlist)
+        # Remove from notebook UI and fully destroy the widget so any background timers
+        # (e.g., periodic "currently playing" polling) cannot resurrect the now playing bar.
         self.notebook.forget(tab)
+        try:
+            tab.destroy()
+        except Exception:
+            pass
 
     
     def remove_all_tabs(self):

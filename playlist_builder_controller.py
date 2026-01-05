@@ -70,9 +70,10 @@ class PlaylistBuilderController:
 
         current_profile = self.persistence.get_current_profile_name()
         self.profile_loader.load_profile(current_profile)
-
-        # Auto-connect all available remote sources
-        self._auto_connect_all_remote_sources()
+        # NOTE:
+        # Remote playlists are restored from the current profile. We intentionally do NOT
+        # auto-connect all configured remote sources on startup, so that unchecking a remote
+        # source persists across app restarts.
 
     def refresh_remote_sources_menu(self):
         """Refresh the remote sources menu with current configuration."""
@@ -365,7 +366,7 @@ class PlaylistBuilderController:
             
             # Add content
             Label(about_window, text="Playlist Builder 2", font=("Helvetica", 16, "bold")).pack(pady=(20, 5))
-            Label(about_window, text="Version 0.6").pack()
+            Label(about_window, text="Version 0.7").pack()
             Label(about_window, text="Developed by AM Leonard").pack(pady=(5, 15))
             Label(about_window, text="for Harav Shlomo Perr").pack(pady=(0, 5))
             Label(about_window, text="104.7 (88.7) Lakewood").pack(pady=(0, 5))

@@ -24,6 +24,8 @@ class PlaylistTabView(ttk.Frame):
         # Connection status tracking for API playlists
         self._connection_status = ConnectionStatus.DISCONNECTED
         self._is_api_playlist = playlist.type == Playlist.PlaylistType.API
+        self._api_manager = None
+        self._currently_playing_job = None
 
         self.drop_target_register(DND_FILES)
         self.dnd_bind('<<Drop>>', self.callbacks["drop_files_in_tab"])
@@ -61,7 +63,40 @@ class PlaylistTabView(ttk.Frame):
             self._register_status_callback()
             self.update_current_playing_track()
             # Schedule periodic updates every 2 seconds
-            self.after(2000, self.periodic_update_current_playing_track)
+            self._currently_playing_job = self.after(2000, self.periodic_update_current_playing_track)
+
+    def _cleanup_remote_resources(self):
+        """Stop background timers/subscriptions that can outlive the tab being visible."""
+        # Cancel periodic currently-playing polling
+        if self._currently_playing_job is not None:
+            try:
+                self.after_cancel(self._currently_playing_job)
+            except Exception:
+                pass
+            self._currently_playing_job = None
+
+        # Cancel any pending disconnect UI timer
+        if hasattr(self, "_disconnect_timer") and self._disconnect_timer:
+            try:
+                self.after_cancel(self._disconnect_timer)
+            except Exception:
+                pass
+            self._disconnect_timer = None
+
+        # Unsubscribe from manager status callbacks
+        try:
+            if self._api_manager:
+                self._api_manager.remove_status_callback(self._on_connection_status_change)
+        except Exception:
+            pass
+        self._api_manager = None
+
+    def destroy(self):
+        # Ensure we don't keep updating "Now Playing" after the tab is closed/disconnected.
+        try:
+            self._cleanup_remote_resources()
+        finally:
+            super().destroy()
     
     def _create_status_bar(self):
         """Create the connection status bar for API playlists."""
@@ -93,18 +128,44 @@ class PlaylistTabView(ttk.Frame):
         """Register for connection status updates."""
         if not self._is_api_playlist or not self.playlist.source_id:
             return
-        
+        self.ensure_manager_subscription()
+
+    def ensure_manager_subscription(self):
+        """Ensure we're subscribed to the current ApiPlaylistManager instance.
+
+        This self-heals cases where the registry recreated managers (or the tab
+        was created before a manager existed).
+        """
+        if not self._is_api_playlist or not self.playlist.source_id:
+            return
+
         manager = self.controller.playlist_service.get_api_manager(self.playlist.source_id)
-        if manager:
-            manager.add_status_callback(self._on_connection_status_change)
-            # Set initial status based on manager's actual status
-            # If manager is connected (playlist loaded successfully), show connected
+        if not manager:
+            return
+
+        if self._api_manager is not manager:
+            # Unsubscribe from old manager (if any)
+            try:
+                if self._api_manager:
+                    self._api_manager.remove_status_callback(self._on_connection_status_change)
+            except Exception:
+                pass
+
+            self._api_manager = manager
+            try:
+                manager.add_status_callback(self._on_connection_status_change)
+            except Exception:
+                pass
+
+        # Sync UI immediately to manager's current state
+        try:
+            status = manager.status
+            message = manager.status_message
             if manager.is_connected or manager.playlist is not None:
-                self._connection_status = ConnectionStatus.CONNECTED
-                self._update_tab_title(connected=True)
-            else:
-                self._connection_status = manager.status
-                self._update_tab_title(connected=False)
+                status = ConnectionStatus.CONNECTED
+            self._update_status_display(status, message)
+        except Exception:
+            pass
     
     def _on_connection_status_change(self, manager, status: ConnectionStatus, message: str):
         """Handle connection status changes."""
@@ -519,6 +580,9 @@ class PlaylistTabView(ttk.Frame):
             return
 
         try:
+            # Keep status subscription accurate even if managers were reloaded.
+            self.ensure_manager_subscription()
+
             # Get the API manager for this playlist's source
             manager = self.controller.playlist_service.get_api_manager_for_playlist(self.playlist)
             if not manager:
@@ -583,7 +647,7 @@ class PlaylistTabView(ttk.Frame):
         if self.playlist.type == Playlist.PlaylistType.API:
             self.update_current_playing_track()
             # Schedule the next update
-            self.after(2000, self.periodic_update_current_playing_track)
+            self._currently_playing_job = self.after(2000, self.periodic_update_current_playing_track)
 
     def scroll_to_track(self, track_path):
         """Scroll to and focus the first tree item matching the track path."""

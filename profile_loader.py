@@ -104,29 +104,36 @@ class ProfileLoader:
                 
             profile_name = selected_profile
         
-        # Clear current tabs
-        notebook_view = self.controller.notebook_view
-        notebook_view.remove_all_tabs()
+        # Suppress auto-saving while we are restoring a profile (we don't want each restored tab
+        # to immediately rewrite settings.json).
+        setattr(self.controller, "_is_loading_profile", True)
+        try:
+            # Clear current tabs
+            notebook_view = self.controller.notebook_view
+            notebook_view.remove_all_tabs()
 
-        # Load playlists from the selected profile
-        playlists = persistence.load_profile_settings(profile_name)
-        for playlist_info in playlists:
-            if playlist_info["type"] == "api":
-                # For Remote Playlists, use the source_id
-                source_id = playlist_info.get("source_id")
-                if source_id:
-                    self.controller.controller_actions.toggle_remote_source(source_id, True)
+            # Load playlists from the selected profile
+            playlists = persistence.load_profile_settings(profile_name)
+            for playlist_info in playlists:
+                if playlist_info["type"] == "api":
+                    # For Remote Playlists, use the source_id
+                    source_id = playlist_info.get("source_id")
+                    if source_id:
+                        self.controller.controller_actions.toggle_remote_source(source_id, True)
+                    else:
+                        print(f"Warning: Skipping API playlist without source_id (legacy format)")
                 else:
-                    print(f"Warning: Skipping API playlist without source_id (legacy format)")
-            else:
-                # For regular playlists, load them directly
-                self.controller.load_playlist(playlist_info["path"], playlist_info["title"])
-        
-        # Update UI - this will handle showing the Remote Playlist if needed
-        self.controller.controller_actions.reload_open_playlists()
+                    # For regular playlists, load them directly
+                    self.controller.load_playlist(playlist_info["path"], playlist_info["title"])
 
-        # Set as current profile
-        persistence.set_current_profile(profile_name)
+            # Update UI - this will handle showing the Remote Playlist if needed
+            self.controller.controller_actions.reload_open_playlists()
+
+            # Set as current profile
+            persistence.set_current_profile(profile_name)
+        finally:
+            # Re-enable auto-save after profile load completes (even if something fails).
+            setattr(self.controller, "_is_loading_profile", False)
 
     def save_profile(self, profile_name=None):
         """Save current tabs to a profile. If profile_name is None, show a dialog to select a profile."""

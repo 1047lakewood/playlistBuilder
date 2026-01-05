@@ -43,6 +43,15 @@ class ApiPlaylistManager:
         
         # Session for connection reuse
         self.session = requests.Session()
+
+    def update_source_config(self, api_url: str, name: str | None = None):
+        """Update the source configuration in-place (used during registry reloads)."""
+        self.api_url_base = api_url
+        if name:
+            self.name = name
+        # Refresh timeouts from config in case settings changed
+        self._connect_timeout = app_config.get(["network", "connection_timeout"], 5)
+        self._read_timeout = app_config.get(["network", "read_timeout"], 10)
     
     @property
     def status(self) -> ConnectionStatus:
@@ -377,7 +386,44 @@ class RemotePlaylistRegistry:
             manager.disconnect()
     
     def reload(self):
-        """Reload sources from config."""
-        self.disconnect_all()
-        self._managers.clear()
-        self._load_sources_from_config()
+        """Reload sources from config without breaking existing subscribers.
+
+        Preserves existing ApiPlaylistManager instances per source_id when possible
+        (updates url/name in-place) so UI callbacks remain attached.
+        """
+        sources = app_config.get(["network", "remote_sources"], {})
+
+        # Compute the set of enabled sources we should have after reload.
+        enabled_sources: dict[str, dict] = {}
+        for source_id, source_config in sources.items():
+            if source_config.get("enabled", True):
+                enabled_sources[source_id] = source_config
+
+        enabled_ids = set(enabled_sources.keys())
+
+        # Disconnect and remove managers for disabled/removed sources.
+        for source_id in list(self._managers.keys()):
+            if source_id not in enabled_ids:
+                try:
+                    self._managers[source_id].disconnect()
+                except Exception:
+                    pass
+                del self._managers[source_id]
+
+        # Update existing managers in-place, and create managers for new sources.
+        for source_id, source_config in enabled_sources.items():
+            url = source_config.get("url", "")
+            name = source_config.get("name", source_id)
+            existing = self._managers.get(source_id)
+            if existing:
+                try:
+                    existing.update_source_config(url, name=name)
+                except Exception:
+                    # Fall back to replacing the manager if something goes wrong
+                    try:
+                        existing.disconnect()
+                    except Exception:
+                        pass
+                    self._managers[source_id] = ApiPlaylistManager(source_id, url, name)
+            else:
+                self._managers[source_id] = ApiPlaylistManager(source_id, url, name)

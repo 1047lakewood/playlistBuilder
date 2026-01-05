@@ -523,6 +523,8 @@ class ControllerActions():
     
     def disconnect_all_remotes(self, event=None):
         """Disconnect all remote playlists."""
+        # Avoid writing settings.json once per remote; we'll save once at the end.
+        setattr(self.controller, "_suppress_profile_autosave", True)
         api_tabs = [t for t in self.controller.notebook_view.get_tabs() 
                    if t.playlist.type == Playlist.PlaylistType.API]
         
@@ -530,6 +532,27 @@ class ControllerActions():
             source_id = tab.playlist.source_id
             if source_id:
                 self.toggle_remote_source(source_id, False)
+
+        setattr(self.controller, "_suppress_profile_autosave", False)
+        self._autosave_current_profile()
+
+    def _autosave_current_profile(self) -> None:
+        """Persist current open tabs into the active profile, without prompting.
+
+        This is used to make remote playlist checkbox state survive app restarts.
+        """
+        try:
+            if getattr(self.controller, "_is_loading_profile", False):
+                return
+            if getattr(self.controller, "_suppress_profile_autosave", False):
+                return
+            profile_name = self.controller.persistence.get_current_profile_name()
+            if not profile_name:
+                return
+            self.controller.profile_loader.save_profile(profile_name)
+        except Exception as e:
+            # Never let persistence failures break UI actions.
+            print(f"Warning: Failed to auto-save profile: {e}")
     
     def toggle_remote_source(self, source_id: str, show: bool):
         """Show or hide a specific remote playlist source.
@@ -592,6 +615,7 @@ class ControllerActions():
                 
                 # Update menu
                 self.controller.menu_bar.set_source_connected(source_id, True)
+                self._autosave_current_profile()
             else:
                 # Disconnect and hide
                 if existing_tab is not None:
@@ -606,6 +630,8 @@ class ControllerActions():
                 
                 # Clear the currently playing context for this source
                 self.controller._currently_playing_contexts.pop(source_id, None)
+
+                self._autosave_current_profile()
                     
         except Exception as e:
             print(f"Error toggling remote source {source_id}: {e}")
