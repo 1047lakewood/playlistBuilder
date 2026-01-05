@@ -19,6 +19,12 @@ class PrelistenView(tk.Frame):
         self.playing = False
         self.current_position = 0
         self.track_length = track.duration
+        # When we update the slider from code, we must not seek audio.
+        self._internal_update = False
+        # Track where the current pygame play() started from, for get_pos() computations.
+        self._playback_start_offset = 0.0
+        # Tk after() job id for the UI updater
+        self._update_job = None
         
         # Initialize pygame mixer with high quality settings and larger buffer to prevent crackling
         if not pygame.mixer.get_init():
@@ -154,17 +160,15 @@ class PrelistenView(tk.Frame):
             self.status_label.config(text="Ready to play")
             self.time_label.config(text=f"0:00 / {self.format_time(self.track_length)}")
             self.progress_bar.config(to=self.track_length)
-            
-            # Start the update thread
-            self.update_thread = threading.Thread(target=self.update_position)
-            self.update_thread.daemon = True
-            self.update_thread.start()
+            # Start the UI updater loop (Tk main thread)
+            self._start_ui_updater()
             
             # Log success
             print(f"Successfully loaded audio: {self.track_path}")
 
-            # Auto play
-            self.toggle_play()
+            # Auto play - ensure UI is ready and then start playback
+            self.update_idletasks()  # Force UI to update first
+            self.after(200, self._auto_play)
             
         except Exception as e:
             self.status_label.config(text=f"Error loading audio: {str(e)}")
@@ -187,6 +191,40 @@ class PrelistenView(tk.Frame):
                     print(f"Error during conversion attempt: {str(conv_error)}")
                     self.status_label.config(text=f"Conversion failed: {str(conv_error)}")
     
+    def _auto_play(self):
+        """Auto-start playback when prelisten view opens"""
+        try:
+            # Double-check audio is loaded before playing
+            if not self.track_path or not os.path.exists(self.track_path):
+                print("Auto-play skipped: track path invalid or file missing")
+                return
+            
+            # Ensure mixer is ready and audio is loaded
+            if not pygame.mixer.get_init():
+                pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=4096)
+            
+            # Verify audio file is actually loaded in mixer
+            try:
+                # Try to get mixer state - if this fails, audio isn't loaded
+                pygame.mixer.music.get_busy()
+            except:
+                # If mixer isn't ready, try loading again
+                pygame.mixer.music.load(self.track_path)
+                pygame.mixer.music.set_volume(1.0)
+            
+            # Only auto-play if not already playing
+            if not self.playing:
+                print("Auto-play: calling toggle_play()")
+                self.toggle_play()
+                print(f"Auto-play started - playing={self.playing}, busy={pygame.mixer.music.get_busy()}")
+            else:
+                print("Auto-play skipped: already playing")
+        except Exception as e:
+            print(f"Error in auto-play: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            # Don't show error to user, just log it - user can manually press play
+    
     def toggle_play(self):
         """Toggle between play and pause"""
         if not self.playing:
@@ -200,8 +238,10 @@ class PrelistenView(tk.Frame):
                 
                 # Start playback from current position or beginning
                 if self.current_position > 0:
+                    self._playback_start_offset = float(self.current_position)
                     pygame.mixer.music.play(start=self.current_position)
                 else:
+                    self._playback_start_offset = 0.0
                     pygame.mixer.music.play()
                     
                 self.playing = True
@@ -224,6 +264,8 @@ class PrelistenView(tk.Frame):
     
     def seek_position(self, value):
         """Seek to a specific position in the track"""
+        if self._internal_update:
+            return
         try:
             position = float(value)
             self.current_position = position
@@ -231,6 +273,7 @@ class PrelistenView(tk.Frame):
             # If currently playing, restart at new position
             if self.playing:
                 pygame.mixer.music.stop()
+                self._playback_start_offset = position
                 pygame.mixer.music.play(start=position)
             
             self.time_label.config(text=f"{self.format_time(position)} / {self.format_time(self.track_length)}")
@@ -238,35 +281,66 @@ class PrelistenView(tk.Frame):
             self.status_label.config(text=f"Error seeking: {str(e)}")
 
     
-    def update_position(self):
-        #FIX
-        return
-        """Update the current position and progress bar"""
-        last_update_time = time.time()
-        while True:
+    def _start_ui_updater(self):
+        """Start (or restart) the Tk main-thread UI updater loop."""
+        self._stop_ui_updater()
+        self._schedule_ui_update()
+
+    def _stop_ui_updater(self):
+        """Stop the Tk UI updater loop if running."""
+        if self._update_job is not None:
             try:
-                if self.playing and pygame.mixer.music.get_busy():
-                    # Calculate elapsed time since last update for smoother position tracking
-                    current_time = time.time()
-                    elapsed = current_time - last_update_time
-                    last_update_time = current_time
-                    
-                    # Update position based on actual elapsed time (smoother than fixed increments)
-                    self.current_position += elapsed
-                    
-                    if self.current_position > self.track_length:
-                        self.current_position = 0
-                        self.playing = False
-                        self.play_button.config(text="▶")
-                    
-                    # Update UI
+                self.after_cancel(self._update_job)
+            except Exception:
+                pass
+            self._update_job = None
+
+    def _schedule_ui_update(self):
+        self._update_job = self.after(100, self._ui_update_tick)
+
+    def _ui_update_tick(self):
+        """Update time label and slider to reflect playback position without seeking audio."""
+        try:
+            if self.playing:
+                # get_pos(): elapsed ms since last play(); -1 if unknown
+                elapsed_ms = pygame.mixer.music.get_pos()
+                if elapsed_ms != -1 and pygame.mixer.music.get_busy():
+                    pos = self._playback_start_offset + (elapsed_ms / 1000.0)
+                    if pos < 0:
+                        pos = 0.0
+                    if self.track_length and pos > self.track_length:
+                        pos = float(self.track_length)
+                    self.current_position = pos
+
+                    # Update UI without triggering seek
+                    self._internal_update = True
                     self.progress_bar.set(self.current_position)
-                    self.time_label.config(text=f"{self.format_time(self.current_position)} / {self.format_time(self.track_length)}")
-            except Exception as e:
-                print(f"Error updating position: {str(e)}")
-            
-            # Use a longer sleep time to reduce CPU usage and prevent audio crackling
-            time.sleep(0.2)
+                    self.time_label.config(
+                        text=f"{self.format_time(self.current_position)} / {self.format_time(self.track_length)}"
+                    )
+                    self._internal_update = False
+
+                # Detect end of playback
+                if not pygame.mixer.music.get_busy():
+                    self.playing = False
+                    self.play_button.config(text="▶")
+                    self.status_label.config(text="Ready to play")
+                    self.current_position = 0.0
+                    self._playback_start_offset = 0.0
+                    self._internal_update = True
+                    self.progress_bar.set(0.0)
+                    self.time_label.config(text=f"0:00 / {self.format_time(self.track_length)}")
+                    self._internal_update = False
+
+        except Exception as e:
+            # Never break the UI loop due to transient pygame/Tk errors
+            try:
+                self._internal_update = False
+            except Exception:
+                pass
+            print(f"Error updating prelisten UI: {str(e)}")
+        finally:
+            self._schedule_ui_update()
     
     def format_time(self, seconds):
         """Format seconds to mm:ss"""
@@ -277,6 +351,7 @@ class PrelistenView(tk.Frame):
     def close(self):
         """Stop playback and close the view"""
         try:
+            self._stop_ui_updater()
             if pygame.mixer.music.get_busy():
                 pygame.mixer.music.stop()
             self.playing = False
