@@ -30,10 +30,6 @@ class PrelistenView(tk.Frame):
         if not pygame.mixer.get_init():
             # 44.1kHz sample rate, 16-bit signed audio, stereo, buffer size 4096 (larger buffer reduces crackling)
             pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=4096)
-        else:
-            # If already initialized, quit and reinitialize with our settings
-            pygame.mixer.quit()
-            pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=4096)
         
         self.create_widgets()
         self.load_audio()
@@ -167,8 +163,9 @@ class PrelistenView(tk.Frame):
             print(f"Successfully loaded audio: {self.track_path}")
 
             # Auto play - ensure UI is ready and then start playback
-            self.update_idletasks()  # Force UI to update first
-            self.after(200, self._auto_play)
+            # Increased delay and added a safety check
+            self.update_idletasks()
+            self.after(300, lambda: self._auto_play(retry_count=3))
             
         except Exception as e:
             self.status_label.config(text=f"Error loading audio: {str(e)}")
@@ -191,12 +188,16 @@ class PrelistenView(tk.Frame):
                     print(f"Error during conversion attempt: {str(conv_error)}")
                     self.status_label.config(text=f"Conversion failed: {str(conv_error)}")
     
-    def _auto_play(self):
+    def _auto_play(self, retry_count=0):
         """Auto-start playback when prelisten view opens"""
         try:
+            # If the view was closed before this fired, stop
+            if not self.winfo_exists():
+                return
+
             # Double-check audio is loaded before playing
             if not self.track_path or not os.path.exists(self.track_path):
-                print("Auto-play skipped: track path invalid or file missing")
+                print(f"Auto-play skipped: track path invalid or file missing: {self.track_path}")
                 return
             
             # Ensure mixer is ready and audio is loaded
@@ -205,25 +206,33 @@ class PrelistenView(tk.Frame):
             
             # Verify audio file is actually loaded in mixer
             try:
-                # Try to get mixer state - if this fails, audio isn't loaded
-                pygame.mixer.music.get_busy()
+                # This might raise if nothing is loaded or mixer is in bad state
+                pygame.mixer.music.get_volume()
             except:
-                # If mixer isn't ready, try loading again
+                print("Auto-play: Mixer not ready, reloading audio...")
                 pygame.mixer.music.load(self.track_path)
                 pygame.mixer.music.set_volume(1.0)
             
             # Only auto-play if not already playing
             if not self.playing:
-                print("Auto-play: calling toggle_play()")
+                print(f"Auto-play attempt (retries left: {retry_count})...")
                 self.toggle_play()
-                print(f"Auto-play started - playing={self.playing}, busy={pygame.mixer.music.get_busy()}")
+                
+                # Verify if it actually started playing
+                if not self.playing and retry_count > 0:
+                    print(f"Auto-play failed to start, retrying in 200ms... ({retry_count} left)")
+                    self.after(200, lambda: self._auto_play(retry_count - 1))
+                else:
+                    print(f"Auto-play result: playing={self.playing}, busy={pygame.mixer.music.get_busy()}")
             else:
-                print("Auto-play skipped: already playing")
+                print("Auto-play skipped: already marked as playing")
         except Exception as e:
             print(f"Error in auto-play: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            # Don't show error to user, just log it - user can manually press play
+            if retry_count > 0:
+                self.after(200, lambda: self._auto_play(retry_count - 1))
+            else:
+                import traceback
+                traceback.print_exc()
     
     def toggle_play(self):
         """Toggle between play and pause"""
