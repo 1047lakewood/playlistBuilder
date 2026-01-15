@@ -27,7 +27,7 @@
             },
             "88.7": {
                 "name": "88.7 Lakewood",
-                "url": "http://localhost:9000/?pass=bmas220",
+                "url": "http://DreamQuest:9000/?pass=bmas220",
                 "enabled": true
             }
         }
