@@ -17,3 +17,9 @@ class Track:
 
     def copy(self):
         return Track(self.path, self.artist, self.title, self.duration, self.metadata)
+
+    def fingerprint(self) -> tuple:
+        """Return a tuple for equality comparison between tracks.
+        Uses path as primary identifier since server doesn't provide unique IDs.
+        """
+        return (self.path, self.artist, self.title, self.duration)

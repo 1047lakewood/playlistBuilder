@@ -1,9 +1,12 @@
-from tkinter import ttk, Frame
+from tkinter import ttk, Frame, Label
 from tkinterdnd2 import TkinterDnD, DND_FILES
 from PlaylistService import playlist_service
+from PlaylistService.api_playlist_manager import ConnectionStatus
+from PlaylistService.playlist_diff import PlaylistDiff
 import utils
 from models.playlist import Playlist
-from typing import List
+from models.track import Track
+from typing import List, Optional
 import os
 from playlist_tab_subviews import PlaylistTabTreeView, PlaylistTabContextMenu, SearchFrame
 
@@ -19,6 +22,18 @@ class PlaylistTabView(ttk.Frame):
         self.title = title
         self.callbacks = callbacks
         self.current_playing_track_id = None
+        
+        # Connection status tracking for API playlists
+        self._connection_status = ConnectionStatus.DISCONNECTED
+        self._is_api_playlist = playlist.type == Playlist.PlaylistType.API
+        self._api_manager = None
+        self._currently_playing_job = None
+
+        # Auto-reload interaction guarding
+        self._user_is_interacting = False
+        self._pending_playlist_update: Optional[Playlist] = None
+        self._interaction_timeout_job = None
+        self._auto_reload_enabled = False
 
         self.drop_target_register(DND_FILES)
         self.dnd_bind('<<Drop>>', self.callbacks["drop_files_in_tab"])
@@ -29,6 +44,14 @@ class PlaylistTabView(ttk.Frame):
         # Create a container frame for the tree and search frame
         self.container = Frame(self)
         self.container.pack(fill="both", expand=True)
+        
+        # Connection status bar (for API playlists) - initially hidden
+        self._status_bar_frame: Optional[Frame] = None
+        self._status_label: Optional[Label] = None
+        self._reconnect_btn: Optional[ttk.Button] = None
+        
+        if self._is_api_playlist:
+            self._create_status_bar()
 
         self.tree = PlaylistTabTreeView(self.container, callbacks)
         self.tree.bind("<Button-3>", lambda event: self.context_menu.show(event))
@@ -44,10 +67,387 @@ class PlaylistTabView(ttk.Frame):
         self.reload_rows()
         
         # If this is an Remote Playlist, start checking for the currently playing track
-        if self.playlist.type == Playlist.PlaylistType.API:
+        if self._is_api_playlist:
+            self._register_status_callback()
             self.update_current_playing_track()
             # Schedule periodic updates every 2 seconds
-            self.after(2000, self.periodic_update_current_playing_track)
+            self._currently_playing_job = self.after(2000, self.periodic_update_current_playing_track)
+
+    def _cleanup_remote_resources(self):
+        """Stop background timers/subscriptions that can outlive the tab being visible."""
+        # Cancel periodic currently-playing polling
+        if self._currently_playing_job is not None:
+            try:
+                self.after_cancel(self._currently_playing_job)
+            except Exception:
+                pass
+            self._currently_playing_job = None
+
+        # Cancel any pending disconnect UI timer
+        if hasattr(self, "_disconnect_timer") and self._disconnect_timer:
+            try:
+                self.after_cancel(self._disconnect_timer)
+            except Exception:
+                pass
+            self._disconnect_timer = None
+
+        # Cancel any pending interaction timeout
+        if self._interaction_timeout_job is not None:
+            try:
+                self.after_cancel(self._interaction_timeout_job)
+            except Exception:
+                pass
+            self._interaction_timeout_job = None
+
+        # Stop auto-reload and unsubscribe from reload callbacks
+        try:
+            if self._api_manager:
+                self._api_manager.stop_auto_reload()
+                self._api_manager.remove_reload_callback(self._on_playlist_reloaded)
+                self._api_manager.remove_status_callback(self._on_connection_status_change)
+        except Exception:
+            pass
+        self._api_manager = None
+        self._auto_reload_enabled = False
+        self._pending_playlist_update = None
+
+    def destroy(self):
+        # Ensure we don't keep updating "Now Playing" after the tab is closed/disconnected.
+        try:
+            self._cleanup_remote_resources()
+        finally:
+            super().destroy()
+    
+    def _create_status_bar(self):
+        """Create the connection status bar for API playlists."""
+        self._status_bar_frame = Frame(self.container, bg="#fff3cd", height=32)
+        
+        self._status_label = Label(
+            self._status_bar_frame,
+            text="⟳ Connecting...",
+            bg="#fff3cd",
+            fg="#856404",
+            font=("Segoe UI", 9),
+            anchor="w",
+            padx=10
+        )
+        self._status_label.pack(side="left", fill="x", expand=True)
+        
+        self._reconnect_btn = ttk.Button(
+            self._status_bar_frame,
+            text="Reconnect",
+            command=self._attempt_reconnect,
+            width=10
+        )
+        # Don't pack reconnect button initially - only shown on disconnect
+        
+        # Initially hidden - will show if disconnected
+        # self._status_bar_frame.pack(side="top", fill="x", pady=(0, 2))
+    
+    def _register_status_callback(self):
+        """Register for connection status updates."""
+        if not self._is_api_playlist or not self.playlist.source_id:
+            return
+        self.ensure_manager_subscription()
+
+    def ensure_manager_subscription(self):
+        """Ensure we're subscribed to the current ApiPlaylistManager instance.
+
+        This self-heals cases where the registry recreated managers (or the tab
+        was created before a manager existed).
+        """
+        if not self._is_api_playlist or not self.playlist.source_id:
+            return
+
+        manager = self.controller.playlist_service.get_api_manager(self.playlist.source_id)
+        if not manager:
+            return
+
+        if self._api_manager is not manager:
+            # Unsubscribe from old manager (if any)
+            try:
+                if self._api_manager:
+                    self._api_manager.remove_status_callback(self._on_connection_status_change)
+            except Exception:
+                pass
+
+            self._api_manager = manager
+            try:
+                manager.add_status_callback(self._on_connection_status_change)
+            except Exception:
+                pass
+
+        # Sync UI immediately to manager's current state
+        try:
+            status = manager.status
+            message = manager.status_message
+            if manager.is_connected or manager.playlist is not None:
+                status = ConnectionStatus.CONNECTED
+            self._update_status_display(status, message)
+        except Exception:
+            pass
+    
+    def _on_connection_status_change(self, manager, status: ConnectionStatus, message: str):
+        """Handle connection status changes."""
+        # Schedule UI update on main thread
+        self.after(0, lambda: self._update_status_display(status, message))
+    
+    def _update_status_display(self, status: ConnectionStatus, message: str = ""):
+        """Update the status bar display based on connection status."""
+        old_status = self._connection_status
+        self._connection_status = status
+
+        if not self._status_bar_frame:
+            return
+
+        if status == ConnectionStatus.CONNECTED:
+            # Cancel any pending disconnect timer
+            if hasattr(self, '_disconnect_timer') and self._disconnect_timer:
+                self.after_cancel(self._disconnect_timer)
+                self._disconnect_timer = None
+            
+            # Hide status bar when connected
+            if self._status_bar_frame.winfo_ismapped():
+                self._status_bar_frame.pack_forget()
+                self._reconnect_btn.pack_forget()
+            # Update tab title to show connected
+            self._update_tab_title(connected=True)
+
+        elif status == ConnectionStatus.CONNECTING:
+            # Don't show status bar for connecting state - too intrusive during normal polling
+            # Keep the current tab title state
+            pass
+
+        elif status == ConnectionStatus.DISCONNECTED:
+            # Only show disconnected status after a brief delay to avoid flashing
+            if not hasattr(self, '_disconnect_timer'):
+                self._disconnect_timer = None
+
+            # Cancel any existing timer
+            if self._disconnect_timer:
+                self.after_cancel(self._disconnect_timer)
+
+            # Schedule to show disconnected status after 3 seconds of persistent disconnection
+            self._disconnect_timer = self.after(3000, lambda: self._show_disconnected_status())
+
+        elif status in (ConnectionStatus.ERROR, ConnectionStatus.TIMEOUT):
+            # Cancel any disconnect timer
+            if hasattr(self, '_disconnect_timer') and self._disconnect_timer:
+                self.after_cancel(self._disconnect_timer)
+                self._disconnect_timer = None
+
+            # Show error status immediately
+            self._status_bar_frame.configure(bg="#f8d7da")
+            error_icon = "⚠" if status == ConnectionStatus.ERROR else "⏱"
+            self._status_label.configure(
+                text=f"{error_icon} {message or 'Connection failed'}",
+                bg="#f8d7da",
+                fg="#721c24"
+            )
+            self._reconnect_btn.pack(side="right", padx=5, pady=2)
+            if not self._status_bar_frame.winfo_ismapped():
+                self._status_bar_frame.pack(side="top", fill="x", pady=(0, 2), before=self.tree)
+            self._update_tab_title(connected=False)
+
+    def _show_disconnected_status(self):
+        """Show the disconnected status bar after delay."""
+        if self._connection_status == ConnectionStatus.DISCONNECTED:
+            self._status_bar_frame.configure(bg="#e2e3e5")
+            self._status_label.configure(
+                text="○ Disconnected",
+                bg="#e2e3e5",
+                fg="#383d41"
+            )
+            self._reconnect_btn.pack(side="right", padx=5, pady=2)
+            if not self._status_bar_frame.winfo_ismapped():
+                self._status_bar_frame.pack(side="top", fill="x", pady=(0, 2), before=self.tree)
+            self._update_tab_title(connected=False)
+    
+    def _update_tab_title(self, connected: bool):
+        """Update the tab title to indicate connection status."""
+        notebook = self.master
+        if not notebook:
+            return
+        
+        base_title = self.title.replace(" ●", "").replace(" ○", "").strip()
+        if connected:
+            new_title = f"{base_title} ●"
+        else:
+            new_title = f"{base_title} ○"
+        
+        try:
+            notebook.tab(self, text=new_title)
+        except Exception:
+            pass
+    
+    def _attempt_reconnect(self):
+        """Attempt to reconnect to the remote source."""
+        if not self._is_api_playlist or not self.playlist.source_id:
+            return
+        
+        self._update_status_display(ConnectionStatus.CONNECTING, "Reconnecting...")
+        
+        # Run reconnection in background thread
+        import threading
+        def reconnect():
+            try:
+                playlist = self.controller.playlist_service.reload_api_playlist(self.playlist.source_id)
+                if playlist:
+                    self.playlist.tracks = list(playlist.tracks)
+                    self.after(0, self.reload_rows)
+            except Exception as e:
+                print(f"Reconnection failed: {e}")
+        
+        thread = threading.Thread(target=reconnect, daemon=True)
+        thread.start()
+    
+    @property
+    def is_connected(self) -> bool:
+        """Check if this tab's playlist source is connected."""
+        if not self._is_api_playlist:
+            return True  # Local playlists are always "connected"
+        return self._connection_status == ConnectionStatus.CONNECTED
+
+    # --- Auto-reload and interaction guarding ---
+
+    def start_auto_reload(self, interval_seconds: int = 30):
+        """Start auto-reload for this tab's remote playlist."""
+        if not self._is_api_playlist or not self.playlist.source_id:
+            return
+
+        manager = self.controller.playlist_service.get_api_manager(self.playlist.source_id)
+        if not manager:
+            return
+
+        # Register for reload notifications
+        manager.add_reload_callback(self._on_playlist_reloaded)
+        manager.start_auto_reload(interval_seconds)
+        self._auto_reload_enabled = True
+
+    def _on_playlist_reloaded(self, new_playlist: Playlist):
+        """Called from background thread when playlist is reloaded.
+
+        Schedules UI update on main thread.
+        """
+        # Schedule UI update on main thread
+        self.after(0, lambda: self._handle_playlist_update(new_playlist))
+
+    def _handle_playlist_update(self, new_playlist: Playlist):
+        """Handle playlist update on main thread.
+
+        If user is interacting, queue the update for later.
+        """
+        if self._user_is_interacting:
+            # Queue the update for when user stops interacting
+            self._pending_playlist_update = new_playlist
+            return
+
+        self._apply_playlist_update(new_playlist)
+
+    def _apply_playlist_update(self, new_playlist: Playlist):
+        """Apply a playlist update with diff-based UI update and state preservation."""
+        # Save current state
+        selection = self.tree.selection()
+        selected_paths = []
+        for item_id in selection:
+            try:
+                values = self.tree.item(item_id, 'values')
+                if len(values) > 6:
+                    selected_paths.append(values[6])
+            except Exception:
+                pass
+
+        yview = self.tree.yview()
+        scroll_position = yview[0] if yview else 0.0
+
+        # Save currently playing track path
+        currently_playing_path = None
+        if self.current_playing_track_id:
+            try:
+                values = self.tree.item(self.current_playing_track_id, 'values')
+                currently_playing_path = values[6] if len(values) > 6 else None
+            except Exception:
+                pass
+
+        # Compute diff
+        diff = PlaylistDiff.compute(self.playlist.tracks, new_playlist.tracks)
+
+        if diff.is_identical:
+            return
+
+        # Apply diff
+        self.apply_diff(diff, new_playlist.tracks)
+
+        # Restore scroll position
+        self.tree.update_idletasks()
+        self.tree.yview_moveto(scroll_position)
+
+        # Restore selection by path
+        self._restore_selection_by_paths(selected_paths)
+
+        # Restore currently playing highlight
+        if currently_playing_path:
+            self._restore_currently_playing(currently_playing_path)
+
+    def _restore_selection_by_paths(self, paths: List[str]):
+        """Restore selection based on track paths."""
+        if not paths:
+            return
+
+        items_to_select = []
+        for item_id in self.tree.get_children():
+            try:
+                values = self.tree.item(item_id, 'values')
+                if len(values) > 6 and values[6] in paths:
+                    items_to_select.append(item_id)
+            except Exception:
+                pass
+
+        if items_to_select:
+            self.tree.selection_set(items_to_select)
+
+    def _restore_currently_playing(self, track_path: str):
+        """Restore the currently playing highlight after diff update."""
+        for item_id in self.tree.get_children():
+            try:
+                values = self.tree.item(item_id, 'values')
+                if len(values) > 6 and values[6] == track_path:
+                    current_tags = list(self.tree.item(item_id, 'tags'))
+                    if 'currently_playing' not in current_tags:
+                        current_tags.append('currently_playing')
+                    self.tree.item(item_id, tags=tuple(current_tags))
+                    self.current_playing_track_id = item_id
+                    return
+            except Exception:
+                pass
+
+    def mark_user_interacting(self):
+        """Mark that user is actively interacting with the view.
+
+        Call this from mouse event handlers to defer auto-reload updates.
+        """
+        self._user_is_interacting = True
+
+        # Cancel any existing timeout
+        if self._interaction_timeout_job:
+            try:
+                self.after_cancel(self._interaction_timeout_job)
+            except Exception:
+                pass
+
+        # Set timeout to clear interaction flag after 500ms of no activity
+        self._interaction_timeout_job = self.after(500, self._clear_interaction_flag)
+
+    def _clear_interaction_flag(self):
+        """Clear the interaction flag and apply any pending updates."""
+        self._user_is_interacting = False
+        self._interaction_timeout_job = None
+
+        # Apply any pending update
+        if self._pending_playlist_update:
+            pending = self._pending_playlist_update
+            self._pending_playlist_update = None
+            self._apply_playlist_update(pending)
 
     def is_empty(self):
         return len(self.playlist.tracks) == 0
@@ -119,6 +519,127 @@ class PlaylistTabView(ttk.Frame):
                 self.current_playing_track_id = item_id
                 
             self.tree.item(item_id, tags=tuple(tags))
+
+    def apply_diff(self, diff: PlaylistDiff, new_tracks: List[Track]):
+        """Apply a diff to the TreeView without full rebuild.
+
+        Must be called on main thread.
+        """
+        if diff.is_identical:
+            return
+
+        # Process changes - note: deletions are in reverse index order from diff.compute()
+        for change in diff.changes:
+            if change.action == 'delete':
+                self._delete_row_at_index(change.index)
+            elif change.action == 'insert':
+                self._insert_row_at_index(change.index, change.track)
+            elif change.action == 'update':
+                self._update_row_at_index(change.index, change.track)
+
+        # Renumber all rows and fix alternating colors after changes
+        self._renumber_rows()
+
+        # Update the playlist tracks reference
+        self.playlist.tracks = list(new_tracks)
+
+    def _delete_row_at_index(self, index: int):
+        """Delete a single row from TreeView."""
+        children = self.tree.get_children()
+        if 0 <= index < len(children):
+            item_id = children[index]
+            # Check if this was the currently playing track
+            if item_id == self.current_playing_track_id:
+                self.current_playing_track_id = None
+            self.tree.delete(item_id)
+
+    def _insert_row_at_index(self, index: int, track: Track):
+        """Insert a single row into TreeView at specified index."""
+        children = self.tree.get_children()
+
+        # Determine insert position
+        if index >= len(children):
+            position = "end"
+        else:
+            position = index
+
+        # Format track data
+        row_values = self._format_track_for_row(index + 1, track)
+
+        # Insert
+        item_id = self.tree.insert("", position, values=row_values)
+        self._apply_row_tags(item_id, index, track)
+
+    def _update_row_at_index(self, index: int, track: Track):
+        """Update an existing row's values without deleting it."""
+        children = self.tree.get_children()
+        if 0 <= index < len(children):
+            item_id = children[index]
+            row_values = self._format_track_for_row(index + 1, track)
+            self.tree.item(item_id, values=row_values)
+            self._apply_row_tags(item_id, index, track)
+
+    def _format_track_for_row(self, row_number: int, track: Track) -> tuple:
+        """Format a track into TreeView row values."""
+        is_api_raw = self.check_for_no_large_play_time(self.playlist)
+
+        if self.playlist.type == Playlist.PlaylistType.API:
+            if is_api_raw:
+                start_time = utils.format_play_time(track.play_time, type="api_raw")
+            else:
+                start_time = utils.format_play_time(track.play_time)
+        else:
+            start_time = utils.format_play_time(track.play_time)
+
+        has_intro = "•" if track.has_intro else ""
+        duration = utils.format_duration(track.duration) if track.duration is not None else ""
+
+        return (row_number, start_time, has_intro, track.artist, track.title, duration, track.path)
+
+    def _apply_row_tags(self, item_id: str, index: int, track: Track):
+        """Apply appropriate tags to a row."""
+        tags = []
+
+        # Alternating row colors
+        if index % 2 == 0:
+            tags.append("even_row")
+        else:
+            tags.append("odd_row")
+
+        # Missing file
+        if not track.exists:
+            tags.append("missing_file")
+
+        # Preserve currently playing highlight if this track matches
+        if self.current_playing_track_id:
+            try:
+                current_values = self.tree.item(self.current_playing_track_id, 'values')
+                if len(current_values) > 6 and current_values[6] == track.path:
+                    tags.append("currently_playing")
+                    self.current_playing_track_id = item_id
+            except Exception:
+                pass
+
+        self.tree.item(item_id, tags=tuple(tags))
+
+    def _renumber_rows(self):
+        """Update row numbers and alternating colors after insertions/deletions."""
+        for i, item_id in enumerate(self.tree.get_children()):
+            values = list(self.tree.item(item_id, 'values'))
+            values[0] = i + 1
+            self.tree.item(item_id, values=tuple(values))
+
+            # Fix alternating row colors
+            current_tags = list(self.tree.item(item_id, 'tags'))
+            # Remove old even/odd tags
+            current_tags = [t for t in current_tags if t not in ('even_row', 'odd_row')]
+            # Add correct tag
+            if i % 2 == 0:
+                current_tags.append('even_row')
+            else:
+                current_tags.append('odd_row')
+            self.tree.item(item_id, tags=tuple(current_tags))
+
     def check_for_no_large_play_time(self, playlist: Playlist):
         for track in playlist.tracks:
             if track.play_time is None:
@@ -341,8 +862,17 @@ class PlaylistTabView(ttk.Frame):
             return
 
         try:
+            # Keep status subscription accurate even if managers were reloaded.
+            self.ensure_manager_subscription()
+
+            # Get the API manager for this playlist's source
+            manager = self.controller.playlist_service.get_api_manager_for_playlist(self.playlist)
+            if not manager:
+                self.controller.notify_currently_playing(None, self, False)
+                return
+            
             # Get the current track from the API
-            current_track = self.controller.playlist_service.api_manager.get_current_track()
+            current_track = manager.get_current_track()
             if not current_track:
                 if self.current_playing_track_id:
                     try:
@@ -382,14 +912,6 @@ class PlaylistTabView(ttk.Frame):
                     if "currently_playing" not in current_tags:
                         current_tags.append("currently_playing")
                     self.tree.item(found_item_id, tags=tuple(current_tags))
-                    # Ensure the track is visible and focused if this tab is currently selected
-                    # self.tree.see(found_item_id) # Disabled scrolling to playing track
-                    
-                    # Check if this tab is currently selected
-                    # if self.controller.notebook_view.get_selected_tab() == self: # Disabled selection/focus
-                        # Focus on the currently playing track
-                        # self.tree.selection_set(found_item_id) # Disabled selection/focus
-                        # self.tree.focus(found_item_id) # Disabled selection/focus
                     
                 # Update the current playing track ID
                 self.current_playing_track_id = found_item_id
@@ -407,7 +929,7 @@ class PlaylistTabView(ttk.Frame):
         if self.playlist.type == Playlist.PlaylistType.API:
             self.update_current_playing_track()
             # Schedule the next update
-            self.after(2000, self.periodic_update_current_playing_track)
+            self._currently_playing_job = self.after(2000, self.periodic_update_current_playing_track)
 
     def scroll_to_track(self, track_path):
         """Scroll to and focus the first tree item matching the track path."""

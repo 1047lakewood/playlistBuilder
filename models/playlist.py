@@ -14,13 +14,15 @@ class Playlist:
     tracks: list[Track]
     path: Optional[str]
     id: uuid.UUID
-    type:PlaylistType
+    type: PlaylistType
+    source_id: Optional[str]  # For API playlists, identifies which remote source
 
-    def __init__(self, tracks = None, path: Optional[str] = None, type: PlaylistType = PlaylistType.LOCAL):
+    def __init__(self, tracks = None, path: Optional[str] = None, type: PlaylistType = PlaylistType.LOCAL, source_id: Optional[str] = None):
         self.tracks: list[Track] = tracks if tracks is not None else []
         self.path = path
         self.id = uuid.uuid4()
         self.type = type
+        self.source_id = source_id  # e.g., "104.7" or "88.7"
 
     def __str__(self):
         track_paths = []
@@ -29,7 +31,16 @@ class Playlist:
         return "playlist with tracks:\n" + "\n".join(track_paths)
 
     def __repr__(self):
-        return f"Playlist(tracks={self.tracks}, path={self.path}, id={self.id})"
+        return f"Playlist(tracks={self.tracks}, path={self.path}, id={self.id}, source_id={self.source_id})"
+    
+    def name_for_display(self) -> str:
+        """Return a human-readable name for the playlist."""
+        if self.source_id:
+            return self.source_id
+        if self.path:
+            import os
+            return os.path.splitext(os.path.basename(self.path))[0]
+        return "Untitled"
 
     def add_track(self, track: Track, insert_index=-1):
         if insert_index == -1:

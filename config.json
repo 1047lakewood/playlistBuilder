@@ -18,7 +18,19 @@
         "deployment_dir": "C:/Users/Admin/Desktop/Work/Playlist Builder 2"
     },
     "network": {
-        "api_url_base": "http://192.168.3.11:9000/?pass=bmas220"
+        "api_url_base": "http://192.168.3.12:9000/?pass=bmas220",
+        "remote_sources": {
+            "104.7": {
+                "name": "104.7 Lakewood",
+                "url": "http://DESKTOP-NR3M3OR:9000/?pass=bmas220",
+                "enabled": true
+            },
+            "88.7": {
+                "name": "88.7 Lakewood",
+                "url": "http://DreamQuest:9000/?pass=bmas220",
+                "enabled": true
+            }
+        }
     },
     "treeview": {
         "row_height": 30,

@@ -77,7 +77,8 @@ class SettingsDialog(tk.Toplevel):
 
     CATEGORY_FONTS = "Fonts"
     CATEGORY_TREEVIEW = "Treeview"
-    CATEGORY_PATHS_NET = "Paths & Network"
+    CATEGORY_PATHS = "Paths"
+    CATEGORY_REMOTE_SOURCES = "Remote Sources"
     CATEGORY_MIGRATION = "Migration"
 
     def __init__(self, master: tk.Tk, on_apply=None):
@@ -105,7 +106,7 @@ class SettingsDialog(tk.Toplevel):
 
         # Left: category list
         self.category_list = tk.Listbox(paned, exportselection=False)
-        for cat in (self.CATEGORY_FONTS, self.CATEGORY_TREEVIEW, self.CATEGORY_PATHS_NET, self.CATEGORY_MIGRATION):
+        for cat in (self.CATEGORY_FONTS, self.CATEGORY_TREEVIEW, self.CATEGORY_PATHS, self.CATEGORY_REMOTE_SOURCES, self.CATEGORY_MIGRATION):
             self.category_list.insert(tk.END, cat)
         self.category_list.bind("<<ListboxSelect>>", self._on_category_selected)
         paned.add(self.category_list, weight=1)
@@ -153,8 +154,10 @@ class SettingsDialog(tk.Toplevel):
             self._build_fonts_editor()
         elif category == self.CATEGORY_TREEVIEW:
             self._build_treeview_editor()
-        elif category == self.CATEGORY_PATHS_NET:
-            self._build_paths_network_editor()
+        elif category == self.CATEGORY_PATHS:
+            self._build_paths_editor()
+        elif category == self.CATEGORY_REMOTE_SOURCES:
+            self._build_remote_sources_editor()
         elif category == self.CATEGORY_MIGRATION:
             self._build_migration_editor()
 
@@ -177,13 +180,12 @@ class SettingsDialog(tk.Toplevel):
 
         frm.columnconfigure(1, weight=1)
 
-    def _build_paths_network_editor(self):
+    def _build_paths_editor(self):
         frm = ttk.Frame(self.editor_frame_container)
         frm.pack(fill=tk.BOTH, expand=True)
 
         playlists_dir = self._get_setting_var(("paths","playlists_dir"), tk.StringVar, default="")
         intros_dir = self._get_setting_var(("paths","intros_dir"), tk.StringVar, default="")
-        api_url = self._get_setting_var(("network","api_url_base"), tk.StringVar, default="")
 
         # Helper row builder
         def make_row(row:int, label:str, var:tk.StringVar, browse:bool=False, is_dir:bool=True):
@@ -199,7 +201,12 @@ class SettingsDialog(tk.Toplevel):
                 ttk.Button(frm,text="...",command=choose,width=3).grid(row=row,column=2,sticky=tk.W)
         make_row(0,"Playlists Directory",playlists_dir,browse=True,is_dir=True)
         make_row(1,"Intros Directory",intros_dir,browse=True,is_dir=True)
-        make_row(2,"API URL",api_url,browse=False,is_dir=False)
+
+        # Note about remote sources
+        note = ttk.Label(frm, text="Note: Remote station URLs are now configured in the 'Remote Sources' category.",
+                        font=("Segoe UI", 9, "italic"))
+        note.grid(row=2, column=0, columnspan=3, sticky=tk.W, pady=(15, 5), padx=5)
+
         frm.columnconfigure(1,weight=1)
 
     def _build_treeview_editor(self):
@@ -212,6 +219,206 @@ class SettingsDialog(tk.Toplevel):
         ttk.Spinbox(frm, from_=10, to=100, textvariable=row_height, width=5).grid(row=0, column=1, sticky=tk.W, pady=5, padx=5)
 
         frm.columnconfigure(1, weight=1)
+
+    def _build_remote_sources_editor(self):
+        """Build editor for remote sources configuration."""
+        frm = ttk.Frame(self.editor_frame_container)
+        frm.pack(fill=tk.BOTH, expand=True)
+
+        # Scrollable frame for sources
+        self._remote_sources_canvas = tk.Canvas(frm, bg=self.cget("bg"))
+        scrollbar = ttk.Scrollbar(frm, orient="vertical", command=self._remote_sources_canvas.yview)
+        self._remote_sources_scrollable = ttk.Frame(self._remote_sources_canvas)
+
+        self._remote_sources_scrollable.bind(
+            "<Configure>",
+            lambda e: self._remote_sources_canvas.configure(scrollregion=self._remote_sources_canvas.bbox("all"))
+        )
+
+        self._remote_sources_canvas.create_window((0, 0), window=self._remote_sources_scrollable, anchor="nw")
+        self._remote_sources_canvas.configure(yscrollcommand=scrollbar.set)
+
+        self._remote_sources_canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # Store source data for management (list of dicts with vars and widgets)
+        self._source_frames = []
+        self._source_widgets = []
+
+        # Build the UI
+        self._rebuild_sources_ui()
+
+    def _rebuild_sources_ui(self):
+        """Rebuild the remote sources UI from current data."""
+        # Clear existing widgets
+        for widget in self._remote_sources_scrollable.winfo_children():
+            widget.destroy()
+
+        scrollable_frame = self._remote_sources_scrollable
+
+        # Header
+        ttk.Label(scrollable_frame, text="Remote Sources", font=("Segoe UI", 12, "bold")).grid(
+            row=0, column=0, columnspan=5, sticky=tk.W, pady=(0, 10), padx=5)
+
+        # Column headers
+        ttk.Label(scrollable_frame, text="Source ID", font=("Segoe UI", 9, "bold")).grid(
+            row=1, column=0, sticky=tk.W, pady=2, padx=5)
+        ttk.Label(scrollable_frame, text="Display Name", font=("Segoe UI", 9, "bold")).grid(
+            row=1, column=1, sticky=tk.W, pady=2, padx=5)
+        ttk.Label(scrollable_frame, text="URL/IP Address", font=("Segoe UI", 9, "bold")).grid(
+            row=1, column=2, sticky=tk.W, pady=2, padx=5)
+        ttk.Label(scrollable_frame, text="Enabled", font=("Segoe UI", 9, "bold")).grid(
+            row=1, column=3, sticky=tk.W, pady=2, padx=5)
+
+        # If no source data yet, load from config
+        if not self._source_frames:
+            remote_sources = self.config_data.get("network", {}).get("remote_sources", {})
+            for source_id, source_config in remote_sources.items():
+                self._source_frames.append({
+                    "id": source_id,
+                    "name": source_config.get("name", ""),
+                    "url": source_config.get("url", ""),
+                    "enabled": source_config.get("enabled", True)
+                })
+
+        # Add source rows
+        row = 2
+        for idx, source_data in enumerate(self._source_frames):
+            self._create_source_row(scrollable_frame, row, idx, source_data)
+            row += 1
+
+        # Add new source button
+        ttk.Button(scrollable_frame, text="+ Add New Source", command=self._add_new_source).grid(
+            row=row, column=0, columnspan=5, sticky=tk.EW, pady=10, padx=5)
+        row += 1
+
+        # Instructions
+        instructions = ttk.Label(scrollable_frame, text=(
+            "Configure remote playlist sources. Each source needs a unique ID, display name, and URL.\n"
+            "URL format: http://ip:port/?pass=password\n"
+            "Changes take effect after applying settings and restarting the application."
+        ), wraplength=600, justify=tk.LEFT)
+        instructions.grid(row=row, column=0, columnspan=5, sticky=tk.W, pady=(10, 5), padx=5)
+        row += 1
+
+        # --- Auto-reload settings ---
+        ttk.Separator(scrollable_frame, orient="horizontal").grid(
+            row=row, column=0, columnspan=5, sticky=tk.EW, pady=15, padx=5)
+        row += 1
+
+        ttk.Label(scrollable_frame, text="Auto-Reload Settings", font=("Segoe UI", 12, "bold")).grid(
+            row=row, column=0, columnspan=5, sticky=tk.W, pady=(0, 10), padx=5)
+        row += 1
+
+        # Get current auto-reload settings from config
+        auto_reload_config = self.config_data.get("network", {}).get("auto_reload", {})
+
+        # Enabled checkbox
+        self._auto_reload_enabled_var = tk.BooleanVar(value=auto_reload_config.get("enabled", True))
+        ttk.Checkbutton(
+            scrollable_frame,
+            text="Enable automatic playlist refresh",
+            variable=self._auto_reload_enabled_var
+        ).grid(row=row, column=0, columnspan=3, sticky=tk.W, padx=5, pady=2)
+        row += 1
+
+        # Interval setting
+        interval_frame = ttk.Frame(scrollable_frame)
+        interval_frame.grid(row=row, column=0, columnspan=5, sticky=tk.W, padx=5, pady=5)
+
+        ttk.Label(interval_frame, text="Refresh interval:").pack(side=tk.LEFT, padx=(0, 5))
+        self._auto_reload_interval_var = tk.IntVar(value=auto_reload_config.get("interval_seconds", 30))
+        ttk.Spinbox(
+            interval_frame,
+            from_=5, to=300,
+            textvariable=self._auto_reload_interval_var,
+            width=5
+        ).pack(side=tk.LEFT)
+        ttk.Label(interval_frame, text="seconds").pack(side=tk.LEFT, padx=(5, 0))
+        row += 1
+
+        # Auto-reload info
+        auto_reload_info = ttk.Label(scrollable_frame, text=(
+            "Auto-reload periodically fetches the latest playlist from remote sources.\n"
+            "Selection and scroll position are preserved during refresh."
+        ), wraplength=600, justify=tk.LEFT, font=("Segoe UI", 9, "italic"))
+        auto_reload_info.grid(row=row, column=0, columnspan=5, sticky=tk.W, pady=(5, 0), padx=5)
+
+        # Update canvas scroll region
+        scrollable_frame.update_idletasks()
+        self._remote_sources_canvas.configure(scrollregion=self._remote_sources_canvas.bbox("all"))
+
+    def _create_source_row(self, parent, row, idx, source_data):
+        """Create a row for a remote source."""
+        # Source ID entry
+        id_var = tk.StringVar(value=source_data.get("id", ""))
+        id_entry = ttk.Entry(parent, textvariable=id_var, width=12)
+        id_entry.grid(row=row, column=0, sticky=tk.W, pady=2, padx=5)
+
+        # Name entry
+        name_var = tk.StringVar(value=source_data.get("name", ""))
+        name_entry = ttk.Entry(parent, textvariable=name_var, width=20)
+        name_entry.grid(row=row, column=1, sticky=tk.W, pady=2, padx=5)
+
+        # URL entry
+        url_var = tk.StringVar(value=source_data.get("url", ""))
+        url_entry = ttk.Entry(parent, textvariable=url_var, width=35)
+        url_entry.grid(row=row, column=2, sticky=tk.W, pady=2, padx=5)
+
+        # Enabled checkbox
+        enabled_var = tk.BooleanVar(value=source_data.get("enabled", True))
+        enabled_check = ttk.Checkbutton(parent, variable=enabled_var)
+        enabled_check.grid(row=row, column=3, sticky=tk.W, pady=2, padx=5)
+
+        # Remove button
+        remove_btn = ttk.Button(parent, text="Remove", command=lambda i=idx: self._remove_source(i), width=8)
+        remove_btn.grid(row=row, column=4, sticky=tk.W, pady=2, padx=5)
+
+        # Update source_data with vars for later retrieval
+        source_data["id_var"] = id_var
+        source_data["name_var"] = name_var
+        source_data["url_var"] = url_var
+        source_data["enabled_var"] = enabled_var
+
+    def _add_new_source(self):
+        """Add a new source."""
+        # Save current values from UI before rebuilding
+        self._sync_source_data_from_ui()
+        
+        # Add new source data
+        new_id = f"source_{len(self._source_frames) + 1}"
+        self._source_frames.append({
+            "id": new_id,
+            "name": "",
+            "url": "http://",
+            "enabled": True
+        })
+        
+        # Rebuild UI
+        self._rebuild_sources_ui()
+
+    def _remove_source(self, idx):
+        """Remove a source by index."""
+        # Save current values from UI before removing
+        self._sync_source_data_from_ui()
+        
+        if 0 <= idx < len(self._source_frames):
+            del self._source_frames[idx]
+        
+        # Rebuild UI
+        self._rebuild_sources_ui()
+
+    def _sync_source_data_from_ui(self):
+        """Sync source data from UI variables."""
+        for source_data in self._source_frames:
+            if "id_var" in source_data:
+                source_data["id"] = source_data["id_var"].get()
+            if "name_var" in source_data:
+                source_data["name"] = source_data["name_var"].get()
+            if "url_var" in source_data:
+                source_data["url"] = source_data["url_var"].get()
+            if "enabled_var" in source_data:
+                source_data["enabled"] = source_data["enabled_var"].get()
 
     def _build_migration_editor(self):
         frm = ttk.Frame(self.editor_frame_container)
@@ -267,6 +474,33 @@ class SettingsDialog(tk.Toplevel):
                 node = node.setdefault(key, {})
             node[path[-1]] = var.get()
 
+        # Handle remote sources
+        if hasattr(self, '_source_frames') and self._source_frames:
+            # Sync data from UI first
+            self._sync_source_data_from_ui()
+            
+            remote_sources = {}
+            for source_data in self._source_frames:
+                source_id = source_data.get("id", "").strip()
+                if source_id:  # Skip empty/invalid sources
+                    remote_sources[source_id] = {
+                        "name": source_data.get("name", "").strip(),
+                        "url": source_data.get("url", "").strip(),
+                        "enabled": source_data.get("enabled", True)
+                    }
+
+            # Ensure network section exists
+            network_node = self.config_data.setdefault("network", {})
+            network_node["remote_sources"] = remote_sources
+
+        # Handle auto-reload settings
+        if hasattr(self, '_auto_reload_enabled_var') and hasattr(self, '_auto_reload_interval_var'):
+            network_node = self.config_data.setdefault("network", {})
+            network_node["auto_reload"] = {
+                "enabled": self._auto_reload_enabled_var.get(),
+                "interval_seconds": self._auto_reload_interval_var.get()
+            }
+
     # -----------------
     # Button callbacks
     # -----------------
@@ -282,11 +516,40 @@ class SettingsDialog(tk.Toplevel):
                 except ValueError:
                     messagebox.showerror("Invalid Row Height", "Row height must be a positive integer")
                     return False
-            if path == ("network","api_url_base"):
-                val = self._vars[path].get()
-                if val and not self.URL_REGEX.match(val):
-                    messagebox.showerror("Invalid URL", f"{val} is not a valid http/https URL")
+
+        # Validate remote sources
+        if hasattr(self, '_source_frames') and self._source_frames:
+            # Sync data from UI first
+            self._sync_source_data_from_ui()
+            
+            seen_ids = set()
+            for source_data in self._source_frames:
+                source_id = source_data.get("id", "").strip()
+                name = source_data.get("name", "").strip()
+                url = source_data.get("url", "").strip()
+
+                # Check for empty fields
+                if not source_id:
+                    messagebox.showerror("Invalid Remote Source", "Source ID cannot be empty")
                     return False
+                if not name:
+                    messagebox.showerror("Invalid Remote Source", f"Display name cannot be empty for source '{source_id}'")
+                    return False
+                if not url:
+                    messagebox.showerror("Invalid Remote Source", f"URL cannot be empty for source '{source_id}'")
+                    return False
+
+                # Check for duplicate IDs
+                if source_id in seen_ids:
+                    messagebox.showerror("Invalid Remote Source", f"Duplicate source ID: '{source_id}'")
+                    return False
+                seen_ids.add(source_id)
+
+                # Validate URL format
+                if not self.URL_REGEX.match(url):
+                    messagebox.showerror("Invalid Remote Source", f"Invalid URL format for source '{source_id}': {url}")
+                    return False
+
         return True
 
     def apply_clicked(self):
@@ -297,6 +560,14 @@ class SettingsDialog(tk.Toplevel):
         save_config(self.config_data)
         # Reload the config in memory so app_config.get() returns updated values
         app_config.reload_config()
+
+        # Reload remote sources registry if it exists
+        try:
+            from PlaylistService.api_playlist_manager import RemotePlaylistRegistry
+            RemotePlaylistRegistry().reload()
+        except ImportError:
+            pass  # RemotePlaylistRegistry may not be available during initial setup
+
         try:
             font_config.configure_ttk_styles()
         except Exception:
@@ -310,8 +581,16 @@ class SettingsDialog(tk.Toplevel):
                 logger.exception("on_apply callback raised an exception")
 
     def reset_defaults_clicked(self):
-        if messagebox.askyesno("Reset Defaults", "Reset all settings to factory defaults?"):
+        if messagebox.askyesno("Reset Defaults", "Reset all settings to factory defaults? This will not affect remote sources configuration."):
+            # Preserve remote sources before resetting
+            remote_sources = self.config_data.get("network", {}).get("remote_sources", {})
+
             self.config_data = deepcopy(DEFAULT_CONFIG)
+
+            # Restore remote sources
+            if remote_sources:
+                self.config_data.setdefault("network", {})["remote_sources"] = remote_sources
+
             # Rebuild current editor and other UI
             self._on_category_selected()
 

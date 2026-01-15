@@ -6,8 +6,25 @@ from keyboard_bindings import KeyboardBindings
 from playlist_builder_controller import PlaylistBuilderController
 from font_config import configure_ttk_styles
 import os
+import sys
+
+
+def _configure_stdio_encoding():
+    """
+    Prevent Windows console UnicodeEncodeError ('charmap' codec can't encode...)
+    when printing file paths/metadata containing non-ASCII characters.
+    """
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        try:
+            if stream is not None and hasattr(stream, "reconfigure"):
+                stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+        except Exception:
+            # Best-effort only; app should still run even if reconfigure isn't supported.
+            pass
 
 def main():
+    _configure_stdio_encoding()
     root = TkinterDnD.Tk()
     root.geometry("1400x800")
     
