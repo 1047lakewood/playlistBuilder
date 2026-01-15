@@ -376,7 +376,7 @@ class PlaylistBuilderController:
             
             # Add content
             Label(about_window, text="Playlist Builder 2", font=("Helvetica", 16, "bold")).pack(pady=(20, 5))
-            Label(about_window, text="Version 0.7.3").pack()
+            Label(about_window, text="Version 0.7.4").pack()
             Label(about_window, text="Developed by AM Leonard").pack(pady=(5, 15))
             Label(about_window, text="for Harav Shlomo Perr").pack(pady=(0, 5))
             Label(about_window, text="104.7 (88.7) Lakewood").pack(pady=(0, 5))

@@ -1,6 +1,7 @@
 from urllib import parse
-from models.playlist import Playlist 
+from models.playlist import Playlist
 from models.track import Track
+from PlaylistService.track_utils import TrackUtils
 import requests
 import xml.etree.ElementTree as ET
 import threading
@@ -303,6 +304,9 @@ class ApiPlaylistManager:
                     duration=duration
                 )
                 track.play_time = self.time_str_to_seconds(data['STARTTIME'])
+                # If server didn't provide metadata, try reading from file
+                if not track.artist and not track.title:
+                    TrackUtils.update_track_metadata(track)
                 playlist.tracks.append(track)
         else:
             print(f"Unexpected root element: {root.tag}")
