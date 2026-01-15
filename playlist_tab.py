@@ -2,8 +2,10 @@ from tkinter import ttk, Frame, Label
 from tkinterdnd2 import TkinterDnD, DND_FILES
 from PlaylistService import playlist_service
 from PlaylistService.api_playlist_manager import ConnectionStatus
+from PlaylistService.playlist_diff import PlaylistDiff
 import utils
 from models.playlist import Playlist
+from models.track import Track
 from typing import List, Optional
 import os
 from playlist_tab_subviews import PlaylistTabTreeView, PlaylistTabContextMenu, SearchFrame
@@ -26,6 +28,12 @@ class PlaylistTabView(ttk.Frame):
         self._is_api_playlist = playlist.type == Playlist.PlaylistType.API
         self._api_manager = None
         self._currently_playing_job = None
+
+        # Auto-reload interaction guarding
+        self._user_is_interacting = False
+        self._pending_playlist_update: Optional[Playlist] = None
+        self._interaction_timeout_job = None
+        self._auto_reload_enabled = False
 
         self.drop_target_register(DND_FILES)
         self.dnd_bind('<<Drop>>', self.callbacks["drop_files_in_tab"])
@@ -83,13 +91,25 @@ class PlaylistTabView(ttk.Frame):
                 pass
             self._disconnect_timer = None
 
-        # Unsubscribe from manager status callbacks
+        # Cancel any pending interaction timeout
+        if self._interaction_timeout_job is not None:
+            try:
+                self.after_cancel(self._interaction_timeout_job)
+            except Exception:
+                pass
+            self._interaction_timeout_job = None
+
+        # Stop auto-reload and unsubscribe from reload callbacks
         try:
             if self._api_manager:
+                self._api_manager.stop_auto_reload()
+                self._api_manager.remove_reload_callback(self._on_playlist_reloaded)
                 self._api_manager.remove_status_callback(self._on_connection_status_change)
         except Exception:
             pass
         self._api_manager = None
+        self._auto_reload_enabled = False
+        self._pending_playlist_update = None
 
     def destroy(self):
         # Ensure we don't keep updating "Now Playing" after the tab is closed/disconnected.
@@ -288,6 +308,147 @@ class PlaylistTabView(ttk.Frame):
             return True  # Local playlists are always "connected"
         return self._connection_status == ConnectionStatus.CONNECTED
 
+    # --- Auto-reload and interaction guarding ---
+
+    def start_auto_reload(self, interval_seconds: int = 30):
+        """Start auto-reload for this tab's remote playlist."""
+        if not self._is_api_playlist or not self.playlist.source_id:
+            return
+
+        manager = self.controller.playlist_service.get_api_manager(self.playlist.source_id)
+        if not manager:
+            return
+
+        # Register for reload notifications
+        manager.add_reload_callback(self._on_playlist_reloaded)
+        manager.start_auto_reload(interval_seconds)
+        self._auto_reload_enabled = True
+
+    def _on_playlist_reloaded(self, new_playlist: Playlist):
+        """Called from background thread when playlist is reloaded.
+
+        Schedules UI update on main thread.
+        """
+        # Schedule UI update on main thread
+        self.after(0, lambda: self._handle_playlist_update(new_playlist))
+
+    def _handle_playlist_update(self, new_playlist: Playlist):
+        """Handle playlist update on main thread.
+
+        If user is interacting, queue the update for later.
+        """
+        if self._user_is_interacting:
+            # Queue the update for when user stops interacting
+            self._pending_playlist_update = new_playlist
+            return
+
+        self._apply_playlist_update(new_playlist)
+
+    def _apply_playlist_update(self, new_playlist: Playlist):
+        """Apply a playlist update with diff-based UI update and state preservation."""
+        # Save current state
+        selection = self.tree.selection()
+        selected_paths = []
+        for item_id in selection:
+            try:
+                values = self.tree.item(item_id, 'values')
+                if len(values) > 6:
+                    selected_paths.append(values[6])
+            except Exception:
+                pass
+
+        yview = self.tree.yview()
+        scroll_position = yview[0] if yview else 0.0
+
+        # Save currently playing track path
+        currently_playing_path = None
+        if self.current_playing_track_id:
+            try:
+                values = self.tree.item(self.current_playing_track_id, 'values')
+                currently_playing_path = values[6] if len(values) > 6 else None
+            except Exception:
+                pass
+
+        # Compute diff
+        diff = PlaylistDiff.compute(self.playlist.tracks, new_playlist.tracks)
+
+        if diff.is_identical:
+            return
+
+        # Apply diff
+        self.apply_diff(diff, new_playlist.tracks)
+
+        # Restore scroll position
+        self.tree.update_idletasks()
+        self.tree.yview_moveto(scroll_position)
+
+        # Restore selection by path
+        self._restore_selection_by_paths(selected_paths)
+
+        # Restore currently playing highlight
+        if currently_playing_path:
+            self._restore_currently_playing(currently_playing_path)
+
+    def _restore_selection_by_paths(self, paths: List[str]):
+        """Restore selection based on track paths."""
+        if not paths:
+            return
+
+        items_to_select = []
+        for item_id in self.tree.get_children():
+            try:
+                values = self.tree.item(item_id, 'values')
+                if len(values) > 6 and values[6] in paths:
+                    items_to_select.append(item_id)
+            except Exception:
+                pass
+
+        if items_to_select:
+            self.tree.selection_set(items_to_select)
+
+    def _restore_currently_playing(self, track_path: str):
+        """Restore the currently playing highlight after diff update."""
+        for item_id in self.tree.get_children():
+            try:
+                values = self.tree.item(item_id, 'values')
+                if len(values) > 6 and values[6] == track_path:
+                    current_tags = list(self.tree.item(item_id, 'tags'))
+                    if 'currently_playing' not in current_tags:
+                        current_tags.append('currently_playing')
+                    self.tree.item(item_id, tags=tuple(current_tags))
+                    self.current_playing_track_id = item_id
+                    return
+            except Exception:
+                pass
+
+    def mark_user_interacting(self):
+        """Mark that user is actively interacting with the view.
+
+        Call this from mouse event handlers to defer auto-reload updates.
+        """
+        self._user_is_interacting = True
+
+        # Cancel any existing timeout
+        if self._interaction_timeout_job:
+            try:
+                self.after_cancel(self._interaction_timeout_job)
+            except Exception:
+                pass
+
+        # Set timeout to clear interaction flag after 500ms of no activity
+        self._interaction_timeout_job = self.after(500, self._clear_interaction_flag)
+
+    def _clear_interaction_flag(self):
+        """Clear the interaction flag and apply any pending updates."""
+        self._user_is_interacting = False
+        self._interaction_timeout_job = None
+
+        # Apply any pending update
+        if self._pending_playlist_update:
+            pending = self._pending_playlist_update
+            self._pending_playlist_update = None
+            self._apply_playlist_update(pending)
+
     def is_empty(self):
         return len(self.playlist.tracks) == 0
    
@@ -358,6 +519,127 @@ class PlaylistTabView(ttk.Frame):
                 self.current_playing_track_id = item_id
                 
             self.tree.item(item_id, tags=tuple(tags))
+
+    def apply_diff(self, diff: PlaylistDiff, new_tracks: List[Track]):
+        """Apply a diff to the TreeView without full rebuild.
+
+        Must be called on main thread.
+        """
+        if diff.is_identical:
+            return
+
+        # Process changes - note: deletions are in reverse index order from diff.compute()
+        for change in diff.changes:
+            if change.action == 'delete':
+                self._delete_row_at_index(change.index)
+            elif change.action == 'insert':
+                self._insert_row_at_index(change.index, change.track)
+            elif change.action == 'update':
+                self._update_row_at_index(change.index, change.track)
+
+        # Renumber all rows and fix alternating colors after changes
+        self._renumber_rows()
+
+        # Update the playlist tracks reference
+        self.playlist.tracks = list(new_tracks)
+
+    def _delete_row_at_index(self, index: int):
+        """Delete a single row from TreeView."""
+        children = self.tree.get_children()
+        if 0 <= index < len(children):
+            item_id = children[index]
+            # Check if this was the currently playing track
+            if item_id == self.current_playing_track_id:
+                self.current_playing_track_id = None
+            self.tree.delete(item_id)
+
+    def _insert_row_at_index(self, index: int, track: Track):
+        """Insert a single row into TreeView at specified index."""
+        children = self.tree.get_children()
+
+        # Determine insert position
+        if index >= len(children):
+            position = "end"
+        else:
+            position = index
+
+        # Format track data
+        row_values = self._format_track_for_row(index + 1, track)
+
+        # Insert
+        item_id = self.tree.insert("", position, values=row_values)
+        self._apply_row_tags(item_id, index, track)
+
+    def _update_row_at_index(self, index: int, track: Track):
+        """Update an existing row's values without deleting it."""
+        children = self.tree.get_children()
+        if 0 <= index < len(children):
+            item_id = children[index]
+            row_values = self._format_track_for_row(index + 1, track)
+            self.tree.item(item_id, values=row_values)
+            self._apply_row_tags(item_id, index, track)
+
+    def _format_track_for_row(self, row_number: int, track: Track) -> tuple:
+        """Format a track into TreeView row values."""
+        is_api_raw = self.check_for_no_large_play_time(self.playlist)
+
+        if self.playlist.type == Playlist.PlaylistType.API:
+            if is_api_raw:
+                start_time = utils.format_play_time(track.play_time, type="api_raw")
+            else:
+                start_time = utils.format_play_time(track.play_time)
+        else:
+            start_time = utils.format_play_time(track.play_time)
+
+        has_intro = "•" if track.has_intro else ""
+        duration = utils.format_duration(track.duration) if track.duration is not None else ""
+
+        return (row_number, start_time, has_intro, track.artist, track.title, duration, track.path)
+
+    def _apply_row_tags(self, item_id: str, index: int, track: Track):
+        """Apply appropriate tags to a row."""
+        tags = []
+
+        # Alternating row colors
+        if index % 2 == 0:
+            tags.append("even_row")
+        else:
+            tags.append("odd_row")
+
+        # Missing file
+        if not track.exists:
+            tags.append("missing_file")
+
+        # Preserve currently playing highlight if this track matches
+        if self.current_playing_track_id:
+            try:
+                current_values = self.tree.item(self.current_playing_track_id, 'values')
+                if len(current_values) > 6 and current_values[6] == track.path:
+                    tags.append("currently_playing")
+                    self.current_playing_track_id = item_id
+            except Exception:
+                pass
+
+        self.tree.item(item_id, tags=tuple(tags))
+
+    def _renumber_rows(self):
+        """Update row numbers and alternating colors after insertions/deletions."""
+        for i, item_id in enumerate(self.tree.get_children()):
+            values = list(self.tree.item(item_id, 'values'))
+            values[0] = i + 1
+            self.tree.item(item_id, values=tuple(values))
+
+            # Fix alternating row colors
+            current_tags = list(self.tree.item(item_id, 'tags'))
+            # Remove old even/odd tags
+            current_tags = [t for t in current_tags if t not in ('even_row', 'odd_row')]
+            # Add correct tag
+            if i % 2 == 0:
+                current_tags.append('even_row')
+            else:
+                current_tags.append('odd_row')
+            self.tree.item(item_id, tags=tuple(current_tags))
+
     def check_for_no_large_play_time(self, playlist: Playlist):
         for track in playlist.tracks:
             if track.play_time is None:

@@ -299,6 +299,50 @@ class SettingsDialog(tk.Toplevel):
             "Changes take effect after applying settings and restarting the application."
         ), wraplength=600, justify=tk.LEFT)
         instructions.grid(row=row, column=0, columnspan=5, sticky=tk.W, pady=(10, 5), padx=5)
+        row += 1
+
+        # --- Auto-reload settings ---
+        ttk.Separator(scrollable_frame, orient="horizontal").grid(
+            row=row, column=0, columnspan=5, sticky=tk.EW, pady=15, padx=5)
+        row += 1
+
+        ttk.Label(scrollable_frame, text="Auto-Reload Settings", font=("Segoe UI", 12, "bold")).grid(
+            row=row, column=0, columnspan=5, sticky=tk.W, pady=(0, 10), padx=5)
+        row += 1
+
+        # Get current auto-reload settings from config
+        auto_reload_config = self.config_data.get("network", {}).get("auto_reload", {})
+
+        # Enabled checkbox
+        self._auto_reload_enabled_var = tk.BooleanVar(value=auto_reload_config.get("enabled", True))
+        ttk.Checkbutton(
+            scrollable_frame,
+            text="Enable automatic playlist refresh",
+            variable=self._auto_reload_enabled_var
+        ).grid(row=row, column=0, columnspan=3, sticky=tk.W, padx=5, pady=2)
+        row += 1
+
+        # Interval setting
+        interval_frame = ttk.Frame(scrollable_frame)
+        interval_frame.grid(row=row, column=0, columnspan=5, sticky=tk.W, padx=5, pady=5)
+
+        ttk.Label(interval_frame, text="Refresh interval:").pack(side=tk.LEFT, padx=(0, 5))
+        self._auto_reload_interval_var = tk.IntVar(value=auto_reload_config.get("interval_seconds", 30))
+        ttk.Spinbox(
+            interval_frame,
+            from_=5, to=300,
+            textvariable=self._auto_reload_interval_var,
+            width=5
+        ).pack(side=tk.LEFT)
+        ttk.Label(interval_frame, text="seconds").pack(side=tk.LEFT, padx=(5, 0))
+        row += 1
+
+        # Auto-reload info
+        auto_reload_info = ttk.Label(scrollable_frame, text=(
+            "Auto-reload periodically fetches the latest playlist from remote sources.\n"
+            "Selection and scroll position are preserved during refresh."
+        ), wraplength=600, justify=tk.LEFT, font=("Segoe UI", 9, "italic"))
+        auto_reload_info.grid(row=row, column=0, columnspan=5, sticky=tk.W, pady=(5, 0), padx=5)
 
         # Update canvas scroll region
         scrollable_frame.update_idletasks()
@@ -448,6 +492,14 @@ class SettingsDialog(tk.Toplevel):
             # Ensure network section exists
             network_node = self.config_data.setdefault("network", {})
             network_node["remote_sources"] = remote_sources
+
+        # Handle auto-reload settings
+        if hasattr(self, '_auto_reload_enabled_var') and hasattr(self, '_auto_reload_interval_var'):
+            network_node = self.config_data.setdefault("network", {})
+            network_node["auto_reload"] = {
+                "enabled": self._auto_reload_enabled_var.get(),
+                "interval_seconds": self._auto_reload_interval_var.get()
+            }
 
     # -----------------
     # Button callbacks

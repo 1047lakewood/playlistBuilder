@@ -32,6 +32,9 @@ class ApiPlaylistManager:
         self._status_message = ""
         self._last_error: Optional[str] = None
         self._status_callbacks: list[Callable] = []
+
+        # Reload callbacks - called when playlist is reloaded from server
+        self._reload_callbacks: list[Callable] = []
         
         # Timeouts from config
         self._connect_timeout = app_config.get(["network", "connection_timeout"], 5)
@@ -78,7 +81,25 @@ class ApiPlaylistManager:
         """Unregister a status callback."""
         if callback in self._status_callbacks:
             self._status_callbacks.remove(callback)
-    
+
+    def add_reload_callback(self, callback: Callable):
+        """Register a callback to be notified when playlist is reloaded from server."""
+        if callback not in self._reload_callbacks:
+            self._reload_callbacks.append(callback)
+
+    def remove_reload_callback(self, callback: Callable):
+        """Unregister a reload callback."""
+        if callback in self._reload_callbacks:
+            self._reload_callbacks.remove(callback)
+
+    def _notify_reload(self, playlist: Playlist):
+        """Notify all registered callbacks that playlist was reloaded."""
+        for callback in self._reload_callbacks:
+            try:
+                callback(playlist)
+            except Exception as e:
+                print(f"Error in reload callback: {e}")
+
     def _set_status(self, status: ConnectionStatus, message: str = ""):
         """Update connection status and notify callbacks."""
         old_status = self._status
@@ -113,7 +134,9 @@ class ApiPlaylistManager:
         """Periodically reloads the playlist in a background thread."""
         while not self._stop_reload_event.is_set():
             try:
-                self.reload_playlist()
+                new_playlist = self.reload_playlist()
+                if new_playlist:
+                    self._notify_reload(new_playlist)
             except Exception as e:
                 print(f"Error during auto-reload for {self.name}: {e}")
             self._stop_reload_event.wait(interval)

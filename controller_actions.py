@@ -603,7 +603,13 @@ class ControllerActions():
                         # Insert at position based on source order
                         self.controller.notebook_view.notebook.insert(0, tab_id)
                         self.controller.notebook_view.notebook.select(tab_id)
-                    
+
+                        # Start auto-reload if enabled in config
+                        auto_reload_config = app_config.get(["network", "auto_reload"], {})
+                        if auto_reload_config.get("enabled", True):
+                            interval = auto_reload_config.get("interval_seconds", 30)
+                            tab.start_auto_reload(interval)
+
                     print(f"Remote Playlist '{source_name}' loaded and displayed")
                 else:
                     # Tab exists, just select it

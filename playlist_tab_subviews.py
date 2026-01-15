@@ -137,10 +137,26 @@ class PlaylistTabTreeView(ttk.Treeview):
         self.hover_x = 0
         self.hover_y = 0
         
-        self.bind("<Button-1>", self.callbacks["button_down"])
-        self.bind("<B1-Motion>", self.callbacks["dragged"])
-        self.bind("<ButtonRelease-1>", self.callbacks["button_up"])
+        self.bind("<Button-1>", self._on_button_down)
+        self.bind("<B1-Motion>", self._on_dragged)
+        self.bind("<ButtonRelease-1>", self._on_button_up)
         self.bind("<Double-1>", self.callbacks["double_click"])
+
+    def _on_button_down(self, event):
+        """Handle button down - mark interaction and forward to callback."""
+        if "on_interaction" in self.callbacks:
+            self.callbacks["on_interaction"](event)
+        self.callbacks["button_down"](event)
+
+    def _on_dragged(self, event):
+        """Handle drag - mark interaction and forward to callback."""
+        if "on_interaction" in self.callbacks:
+            self.callbacks["on_interaction"](event)
+        self.callbacks["dragged"](event)
+
+    def _on_button_up(self, event):
+        """Handle button up - forward to callback."""
+        self.callbacks["button_up"](event)
         
     def show_delayed_tooltip(self):
         """Show the tooltip after delay has passed"""

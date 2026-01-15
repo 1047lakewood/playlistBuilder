@@ -40,7 +40,8 @@ class PlaylistBuilderController:
             "drop_files_in_tab": self.dropped_files_in_tab,
             "hover_with_files": self.hover_with_files,
             "double_click": self.handle_double_click,
-            "search": self.toggle_search
+            "search": self.toggle_search,
+            "on_interaction": self.on_user_interaction
         }
 
 
@@ -117,6 +118,15 @@ class PlaylistBuilderController:
     def button_down(self, event): self.tree_interaction_controller.button_down(event)
     def dragged(self, event): self.tree_interaction_controller.dragged(event)
     def button_up(self, event): self.tree_interaction_controller.button_up(event)
+
+    def on_user_interaction(self, event=None):
+        """Notify the current tab that user is interacting (for auto-reload deferral)."""
+        try:
+            tab = self.get_selected_tab()
+            if tab and hasattr(tab, 'mark_user_interacting'):
+                tab.mark_user_interacting()
+        except Exception:
+            pass
 
     def copy_tracks(self, event=None): self.tree_interaction_controller.copy_tracks(event)
     def cut_tracks(self, event=None): self.tree_interaction_controller.cut_tracks(event)
@@ -366,7 +376,7 @@ class PlaylistBuilderController:
             
             # Add content
             Label(about_window, text="Playlist Builder 2", font=("Helvetica", 16, "bold")).pack(pady=(20, 5))
-            Label(about_window, text="Version 0.7.2").pack()
+            Label(about_window, text="Version 0.7.3").pack()
             Label(about_window, text="Developed by AM Leonard").pack(pady=(5, 15))
             Label(about_window, text="for Harav Shlomo Perr").pack(pady=(0, 5))
             Label(about_window, text="104.7 (88.7) Lakewood").pack(pady=(0, 5))
