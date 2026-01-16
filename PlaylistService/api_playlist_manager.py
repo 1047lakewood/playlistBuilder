@@ -134,13 +134,15 @@ class ApiPlaylistManager:
     def _auto_reload_loop(self, interval: int):
         """Periodically reloads the playlist in a background thread."""
         while not self._stop_reload_event.is_set():
+            # Wait FIRST - prevents double-load on startup
+            if self._stop_reload_event.wait(interval):
+                break  # Stop event was set during wait
             try:
                 new_playlist = self.reload_playlist()
                 if new_playlist:
                     self._notify_reload(new_playlist)
             except Exception as e:
                 print(f"Error during auto-reload for {self.name}: {e}")
-            self._stop_reload_event.wait(interval)
 
     def stop_auto_reload(self):
         """Stops the automatic playlist reloading."""

@@ -119,6 +119,10 @@ class ControllerActions():
                 tab = self.controller.notebook_view.add_tab(playlist, title)
                 continue
         for tab in self.controller.notebook_view.get_tabs():
+            # Skip API playlists - they already have metadata from server
+            # and intros were already checked in toggle_remote_source()
+            if tab.playlist.type == Playlist.PlaylistType.API:
+                continue
             self.load_playlist_metadata_for_tab(tab)
 
 

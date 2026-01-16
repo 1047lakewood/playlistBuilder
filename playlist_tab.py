@@ -369,6 +369,10 @@ class PlaylistTabView(ttk.Frame):
             except Exception:
                 pass
 
+        # Calculate play times for the new playlist (same as initial load)
+        # This ensures times are calculated correctly instead of using raw server STARTTIME
+        self.controller.playlist_service.create_day_start_times_playlist(new_playlist)
+
         # Compute diff
         diff = PlaylistDiff.compute(self.playlist.tracks, new_playlist.tracks)
 

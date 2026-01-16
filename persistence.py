@@ -95,10 +95,21 @@ class Persistence:
         """Save playlists to the specified profile or current profile"""
         settings = self.load_settings()
         profile_to_save = profile_name if profile_name else self.current_profile_name
-        
+
         if profile_to_save not in settings["profiles"]:
             settings["profiles"][profile_to_save] = []
-            
+
         settings["profiles"][profile_to_save] = playlists
         self.save_settings(settings)
         return playlists
+
+    def save_window_geometry(self, geometry: str):
+        """Save window geometry (e.g., '1400x800+100+50')"""
+        settings = self.load_settings()
+        settings["window_geometry"] = geometry
+        self.save_settings(settings)
+
+    def get_window_geometry(self) -> str | None:
+        """Get saved window geometry, or None if not set"""
+        settings = self.load_settings()
+        return settings.get("window_geometry")

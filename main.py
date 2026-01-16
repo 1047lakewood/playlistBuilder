@@ -26,12 +26,17 @@ def _configure_stdio_encoding():
 def main():
     _configure_stdio_encoding()
     root = TkinterDnD.Tk()
-    root.geometry("1400x800")
-    
+    root.geometry("1400x800")  # Default size
+
     # Configure fonts and styles for the application
     configure_ttk_styles()
 
     controller = PlaylistBuilderController(root)
+
+    # Restore saved window geometry if available
+    saved_geometry = controller.persistence.get_window_geometry()
+    if saved_geometry:
+        root.geometry(saved_geometry)
     # container_view = ContainerView(root, menu_bar=menu_bar, bindings = keyboard_bindings)
     
 

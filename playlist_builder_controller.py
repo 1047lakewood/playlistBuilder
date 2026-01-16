@@ -387,7 +387,12 @@ class PlaylistBuilderController:
             # Make sure the window appears on top
             about_window.lift()
             about_window.focus_force()
-            
+
         except Exception as e:
             print(f"Error showing about dialog: {str(e)}")
             messagebox.showerror("Error", f"Failed to show about dialog: {str(e)}")
+
+    def on_close(self):
+        """Called when the application is closing. Saves window geometry."""
+        geometry = self.root.geometry()
+        self.persistence.save_window_geometry(geometry)
