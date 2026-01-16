@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import simpledialog, messagebox
 from font_config import DEFAULT_FONT, BOLD_FONT, DEFAULT_FONT_TUPLE
+from version import VERSION, APP_NAME
 
 class ProfileSelectionDialog(simpledialog.Dialog):
     def __init__(self, parent, title, profiles, current_profile, action_type="load"):
@@ -264,7 +265,7 @@ class ProfileLoader:
                         self.controller.root.deiconify()
                         self.controller.root.focus_force()
                         self.controller.root.lift()
-                        title = f"Playlist Builder - {profiles[0]}"
+                        title = f"{APP_NAME}    v{VERSION} - {profiles[0]}"
                         self.controller.root.title(title)
         
         # Create new profile button
@@ -282,7 +283,7 @@ class ProfileLoader:
                     listbox.selection_clear(0, tk.END)
                     listbox.selection_set(profiles.index(new_name))
                     persistence.set_current_profile(new_name)
-                    title = f"Playlist Builder - {new_name}"
+                    title = f"{APP_NAME}    v{VERSION} - {new_name}"
                     self.controller.root.title(title)
         
         # Switch to selected profile

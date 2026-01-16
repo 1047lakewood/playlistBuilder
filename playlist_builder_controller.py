@@ -8,14 +8,15 @@ from controller_actions import ControllerActions
 from PlaylistService.playlist_service import PlaylistServiceManager
 from persistence import Persistence
 from profile_loader import ProfileLoader
-from file_utils import FileUtils    
+from file_utils import FileUtils
 from tree_interaction_controller import TreeInteractionController
 from settings_dialog import SettingsDialog
+from version import VERSION, APP_NAME
 
 class PlaylistBuilderController:
     def __init__(self, root):
         self.root = root
-        self.root.title("Playlist Builder")
+        self.root.title(f"{APP_NAME}    v{VERSION}")
         self.container_view = ContainerView(root, self)
         self.menu_bar = MenuBar(self.root)
         self.bindings = KeyboardBindings(self.root)
@@ -93,7 +94,7 @@ class PlaylistBuilderController:
             # Update status bar to show connecting message
             import tkinter.messagebox as messagebox
             connecting_msg = f"Connecting to {len(sources)} remote source(s)..."
-            self.root.title(f"Playlist Builder - {connecting_msg}")
+            self.root.title(f"{APP_NAME}    v{VERSION} - {connecting_msg}")
 
             for source_id, source_name in sources:
                 print(f"Attempting to connect to {source_name} ({source_id})...")
@@ -107,7 +108,7 @@ class PlaylistBuilderController:
 
             # Reset title
             current_profile = self.persistence.get_current_profile_name()
-            self.root.title(f"Playlist Builder - {current_profile}")
+            self.root.title(f"{APP_NAME}    v{VERSION} - {current_profile}")
 
         except Exception as e:
             print(f"Error during auto-connection setup: {e}")
@@ -376,7 +377,7 @@ class PlaylistBuilderController:
             
             # Add content
             Label(about_window, text="Playlist Builder 2", font=("Helvetica", 16, "bold")).pack(pady=(20, 5))
-            Label(about_window, text="Version 0.7.5").pack()
+            Label(about_window, text=f"Version {VERSION}").pack()
             Label(about_window, text="Developed by AM Leonard").pack(pady=(5, 15))
             Label(about_window, text="for Harav Shlomo Perr").pack(pady=(0, 5))
             Label(about_window, text="104.7 (88.7) Lakewood").pack(pady=(0, 5))

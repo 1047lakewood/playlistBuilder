@@ -1,6 +1,7 @@
 import json
 import os
 from models.playlist import Playlist
+from version import VERSION, APP_NAME
 
 class Persistence:
     
@@ -61,7 +62,7 @@ class Persistence:
             self.current_profile_name = profile_name
             self.profile["current_profile"] = profile_name
             self.save_settings(self.profile)
-            self.controller.root.title(f"Playlist Builder - {profile_name}")
+            self.controller.root.title(f"{APP_NAME}    v{VERSION} - {profile_name}")
             return True
         return False
 

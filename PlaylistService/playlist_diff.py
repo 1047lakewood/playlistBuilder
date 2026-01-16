@@ -24,9 +24,10 @@ class PlaylistDiff:
 
         Strategy:
         1. Build maps of path -> (index, track) for both lists
-        2. Identify removed tracks (in old but not new)
-        3. Identify added tracks (in new but not old)
-        4. Identify updated tracks (same path, different attributes)
+        2. Identify reordered tracks (same path, different position) - treated as delete+insert
+        3. Identify removed tracks (in old but not new)
+        4. Identify added tracks (in new but not old)
+        5. Identify updated tracks (same path, same position, different attributes)
 
         Returns operations to transform old_tracks into new_tracks.
         """
@@ -38,22 +39,32 @@ class PlaylistDiff:
         old_paths = set(old_map.keys())
         new_paths = set(new_map.keys())
 
-        # Deleted tracks (in old but not in new)
-        deleted_paths = old_paths - new_paths
+        # Identify tracks that exist in both but changed position (reordered)
+        # Treat these as delete + insert to handle correctly
+        common_paths = old_paths & new_paths
+        moved_paths = set()
+        for path in common_paths:
+            old_idx, _ = old_map[path]
+            new_idx, _ = new_map[path]
+            if old_idx != new_idx:
+                moved_paths.add(path)
+
+        # Deleted tracks: in old but not in new, OR reordered
+        deleted_paths = (old_paths - new_paths) | moved_paths
         # Process deletions in reverse index order so indices remain valid
         for path in sorted(deleted_paths, key=lambda p: old_map[p][0], reverse=True):
             old_idx, _ = old_map[path]
             changes.append(TrackChange('delete', old_idx))
 
-        # Added tracks (in new but not in old)
-        added_paths = new_paths - old_paths
+        # Added tracks: in new but not in old, OR reordered
+        added_paths = (new_paths - old_paths) | moved_paths
         for path in sorted(added_paths, key=lambda p: new_map[p][0]):
             new_idx, track = new_map[path]
             changes.append(TrackChange('insert', new_idx, track))
 
-        # Check for updates among common tracks
-        common_paths = old_paths & new_paths
-        for path in common_paths:
+        # Check for updates among common tracks that didn't move
+        unmoved_common_paths = common_paths - moved_paths
+        for path in unmoved_common_paths:
             old_idx, old_track = old_map[path]
             new_idx, new_track = new_map[path]
 
