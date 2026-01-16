@@ -393,6 +393,7 @@ class PlaylistBuilderController:
             messagebox.showerror("Error", f"Failed to show about dialog: {str(e)}")
 
     def on_close(self):
-        """Called when the application is closing. Saves window geometry."""
+        """Called when the application is closing. Saves window geometry and state."""
+        state = self.root.state()  # 'normal', 'zoomed' (maximized on Windows), 'iconic', etc.
         geometry = self.root.geometry()
-        self.persistence.save_window_geometry(geometry)
+        self.persistence.save_window_geometry(geometry, state)

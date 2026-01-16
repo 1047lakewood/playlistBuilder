@@ -103,13 +103,14 @@ class Persistence:
         self.save_settings(settings)
         return playlists
 
-    def save_window_geometry(self, geometry: str):
-        """Save window geometry (e.g., '1400x800+100+50')"""
+    def save_window_geometry(self, geometry: str, state: str = "normal"):
+        """Save window geometry (e.g., '1400x800+100+50') and state (normal/zoomed)"""
         settings = self.load_settings()
         settings["window_geometry"] = geometry
+        settings["window_state"] = state
         self.save_settings(settings)
 
-    def get_window_geometry(self) -> str | None:
-        """Get saved window geometry, or None if not set"""
+    def get_window_geometry(self) -> tuple[str | None, str]:
+        """Get saved window geometry and state. Returns (geometry, state)."""
         settings = self.load_settings()
-        return settings.get("window_geometry")
+        return settings.get("window_geometry"), settings.get("window_state", "normal")

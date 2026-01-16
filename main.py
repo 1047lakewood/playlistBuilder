@@ -33,12 +33,13 @@ def main():
 
     controller = PlaylistBuilderController(root)
 
-    # Restore saved window geometry if available
-    saved_geometry = controller.persistence.get_window_geometry()
+    # Restore saved window geometry and state (must be done after window is realized)
+    saved_geometry, saved_state = controller.persistence.get_window_geometry()
     if saved_geometry:
+        root.update_idletasks()  # Ensure window is fully realized
         root.geometry(saved_geometry)
-    # container_view = ContainerView(root, menu_bar=menu_bar, bindings = keyboard_bindings)
-    
+    if saved_state and saved_state != "normal":
+        root.state(saved_state)
 
     def on_closing():
         if hasattr(controller, 'on_close'):

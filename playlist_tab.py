@@ -466,8 +466,19 @@ class PlaylistTabView(ttk.Frame):
 
     
         
-    def reload_rows(self):
+    def reload_rows(self, preserve_scroll: bool = False):
         playlist = self.playlist
+
+        # Save scroll position and selection if requested
+        scroll_position = 0.0
+        selected_indexes = []
+        if preserve_scroll:
+            try:
+                yview = self.tree.yview()
+                scroll_position = yview[0] if yview else 0.0
+                selected_indexes = self.get_selected_row_indexes()
+            except Exception:
+                pass
         
         # Store the path of the currently playing track before clearing the tree
         currently_playing_path = None
@@ -523,6 +534,17 @@ class PlaylistTabView(ttk.Frame):
                 self.current_playing_track_id = item_id
                 
             self.tree.item(item_id, tags=tuple(tags))
+
+        # Restore scroll position and selection if requested
+        if preserve_scroll:
+            self.tree.update_idletasks()
+            if scroll_position > 0.0:
+                self.tree.yview_moveto(scroll_position)
+            if selected_indexes:
+                children = self.tree.get_children()
+                items_to_select = [children[i] for i in selected_indexes if i < len(children)]
+                if items_to_select:
+                    self.tree.selection_set(items_to_select)
 
     def apply_diff(self, diff: PlaylistDiff, new_tracks: List[Track]):
         """Apply a diff to the TreeView without full rebuild.

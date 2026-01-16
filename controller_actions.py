@@ -143,7 +143,7 @@ class ControllerActions():
             self.controller.playlist_service.update_playlist_metadata(playlist)
             self.controller.playlist_service.check_for_intros_and_exists(playlist)
             if playlist_tab:
-                playlist_tab.reload_rows()
+                playlist_tab.after(0, lambda: playlist_tab.reload_rows(preserve_scroll=True))
         except Exception as e:
             print(e)
     
