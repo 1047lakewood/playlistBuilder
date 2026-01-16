@@ -72,14 +72,28 @@ python -c "from playlist_builder_controller import PlaylistBuilderController"
 When the user says:
 
 ### "update"
-1. Increment the patch version in `playlist_builder_controller.py` in `show_about_dialog()` (line ~379: `Label(about_window, text="Version X.Y.Z")`)
-2. Commit all staged/unstaged changes with a descriptive message summarizing the changes
+1. Increment the patch version in `version.py` (e.g., `VERSION = "0.7.7"` → `VERSION = "0.7.8"`)
+2. Stage and commit source files (not __pycache__, .claude, or settings.json):
+   ```bash
+   git add PlaylistService/*.py *.py models/*.py version.py
+   git commit -m "v0.X.Y: Summary of changes"
+   ```
 
 ### "deploy"
-1. **Import config files** from stable/deployment directory to active/dev directory (sync config from deployed version)
-2. **Run full deployment** to copy updated code to deployment directory
-3. Deployment path is in `config.json` at `paths.deployment_dir`
-4. Equivalent to: Settings → Migration → Import Config Files, then Full Deployment
+1. **Import config** from deployment to dev:
+   ```bash
+   cp "C:/Users/Admin/Desktop/Work/Playlist Builder 2/config.json" "G:/Misc/Dev/playlistBuilder/config.json"
+   ```
+2. **Copy code** to deployment directory:
+   ```bash
+   cd "G:/Misc/Dev/playlistBuilder"
+   cp -f *.py "C:/Users/Admin/Desktop/Work/Playlist Builder 2/"
+   cp -rf models "C:/Users/Admin/Desktop/Work/Playlist Builder 2/"
+   cp -rf PlaylistService "C:/Users/Admin/Desktop/Work/Playlist Builder 2/"
+   ```
+
+### "update and deploy"
+Run both commands in sequence.
 
 ## Configuration
 
