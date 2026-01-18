@@ -109,13 +109,23 @@ class ControllerActions():
     def reload_open_playlists(self):
         open_playlists: List[Playlist] = self.get_open_playlists()
         playlists_displayed_in_tabs = [playlist for playlist in self.controller.notebook_view.get_tab_playlists()]
+
+        # Build a set of source_ids already displayed for API playlists
+        displayed_source_ids = set()
+        for tab in self.controller.notebook_view.get_tabs():
+            if tab.playlist.type == Playlist.PlaylistType.API and tab.playlist.source_id:
+                displayed_source_ids.add(tab.playlist.source_id)
+
         for playlist in open_playlists:
             if playlist not in playlists_displayed_in_tabs:
-                # MAYBE TAKE OUT
-                if playlist.type != Playlist.PlaylistType.API:
-                    title = os.path.splitext(os.path.basename(playlist.path))[0]
-                else:
-                    title = "Playing"
+                # Skip API playlists that already have a tab (check by source_id)
+                if playlist.type == Playlist.PlaylistType.API:
+                    if playlist.source_id in displayed_source_ids:
+                        continue
+                    # API playlists should be opened via toggle_remote_source, not here
+                    continue
+
+                title = os.path.splitext(os.path.basename(playlist.path))[0]
                 tab = self.controller.notebook_view.add_tab(playlist, title)
                 continue
         for tab in self.controller.notebook_view.get_tabs():
@@ -143,7 +153,7 @@ class ControllerActions():
             self.controller.playlist_service.update_playlist_metadata(playlist)
             self.controller.playlist_service.check_for_intros_and_exists(playlist)
             if playlist_tab:
-                playlist_tab.after(0, lambda: playlist_tab.reload_rows(preserve_scroll=True))
+                playlist_tab.after(0, lambda pt=playlist_tab: pt.reload_rows(preserve_scroll=True) if pt.winfo_exists() else None)
         except Exception as e:
             print(e)
     
