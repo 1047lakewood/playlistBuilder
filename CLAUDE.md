@@ -109,3 +109,10 @@ Run both commands in sequence.
 - Uses `tkinterdnd2` for drag-and-drop file support
 - Uses `pygame` for audio preview functionality
 - Remote API expects XML responses with `<Playlist><TRACK .../></Playlist>` format
+
+## Known Issues
+
+- **UI freezes during remote playlist reload and profile loading**: These operations currently run on the main thread and block the UI. Should be moved to background threads, but requires careful handling of:
+  - Thread-safe UI updates (must use `after()` to marshal back to main thread)
+  - Widget lifecycle (tabs may be destroyed before callbacks execute; use `winfo_exists()` checks)
+  - Race conditions with user interactions during load
