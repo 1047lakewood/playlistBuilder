@@ -1,6 +1,7 @@
 class KeyboardBindings:
     
     bindings  = {
+        "new": (["<Control-n>", "<Control-N>"], "Ctrl+N"),
         "open": (["<Control-o>", "<Control-O>"], "Ctrl+O"),
         "save": (["<Control-s>"], "Ctrl+S"),
         "save_as": (["<Control-Shift-s>"], "Ctrl+Shift+S"),

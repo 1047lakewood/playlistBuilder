@@ -19,6 +19,8 @@ class MenuBar(tk.Menu):
         
         # File Menu
         file_menu = tk.Menu(self, tearoff=0)
+        if "new" in self.callbacks:
+            file_menu.add_command(label="New", command=self.callbacks["new"], accelerator=display_names.get("new", ""))
         if "open" in self.callbacks:
             file_menu.add_command(label=f"Open", command=self.callbacks["open"], accelerator=display_names["open"])
         if "save" in self.callbacks:

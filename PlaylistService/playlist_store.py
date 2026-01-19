@@ -35,6 +35,12 @@ class PlaylistStore:
             return None
         return self.remote_registry.get_manager(playlist.source_id)
 
+    def create_new_playlist(self) -> Playlist:
+        """Create a new empty playlist."""
+        playlist = Playlist(tracks=[], path=None, type=Playlist.PlaylistType.LOCAL)
+        self.open_playlists.append(playlist)
+        return playlist
+
     def load_playlist_from_path(self, path: str) -> Optional[Playlist]:
         """Load a local playlist from file."""
         for playlist in self.open_playlists:

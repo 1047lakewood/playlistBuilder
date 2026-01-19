@@ -48,6 +48,10 @@ class PlaylistServiceManager:
         return self.store.remote_registry.get_available_sources()
 
     # Playlist loading and saving
+    def create_new_playlist(self) -> Playlist:
+        """Create a new empty playlist."""
+        return self.store.create_new_playlist()
+
     def load_playlist_from_path(self, path) -> Playlist:
         return self.store.load_playlist_from_path(path)
 

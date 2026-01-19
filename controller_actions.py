@@ -24,6 +24,7 @@ class ControllerActions():
     def __init__(self, controller):
         self.controller = controller
         self.actions = {
+            "new": self.new_playlist,
             "open": self.open_playlist,
             "save": self.save_current_playlist,
             "save_as": self.save_current_playlist_as,
@@ -43,6 +44,17 @@ class ControllerActions():
     def test2(self, event=None):
         test = Test(self.controller)
         test.test2()
+
+    def new_playlist(self, event=None):
+        """Create a new empty playlist and open it in a tab."""
+        playlist = self.controller.playlist_service.create_new_playlist()
+        self.reload_open_playlists()
+        # Select the new tab
+        for tab in self.controller.notebook_view.get_tabs():
+            if tab.playlist is playlist:
+                self.controller.notebook_view.notebook.select(str(tab))
+                break
+
     def get_selected_tab(self):
         return self.controller.notebook_view.get_selected_tab()
     def get_selected_tab_playlist(self):
@@ -125,7 +137,7 @@ class ControllerActions():
                     # API playlists should be opened via toggle_remote_source, not here
                     continue
 
-                title = os.path.splitext(os.path.basename(playlist.path))[0]
+                title = playlist.name_for_display()
                 tab = self.controller.notebook_view.add_tab(playlist, title)
                 continue
         for tab in self.controller.notebook_view.get_tabs():
