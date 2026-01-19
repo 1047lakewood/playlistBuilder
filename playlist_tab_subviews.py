@@ -45,34 +45,46 @@ class Tooltip:
     def __init__(self, parent):
         self.parent = parent
         self.tip_window = None
-        self.id = None
-        self.x = self.y = 0
         self.scheduled_id = None
 
     def show_tip(self, text, x, y):
         """Display text in a tooltip window"""
         if self.tip_window or not text:
             return
-            
+
         # Create tooltip window
         self.tip_window = Toplevel(self.parent)
         self.tip_window.withdraw()
         self.tip_window.overrideredirect(True)  # Remove window decorations
-        
-        # Create label with tooltip text with improved styling
-        label = Label(self.tip_window, text=text, justify='left',
-                      background='#F5F5F5', relief='solid', borderwidth=1,
-                      font=("Segoe UI", 10, "normal"), padx=8, pady=5)
+        self.tip_window.attributes('-topmost', True)
+
+        # Create frame for better visual appearance
+        frame = Frame(self.tip_window, background='#2D2D2D', padx=1, pady=1)
+        frame.pack(fill='both', expand=True)
+
+        # Create label with tooltip text - dark theme for contrast
+        label = Label(frame, text=text, justify='left',
+                      background='#2D2D2D', foreground='#FFFFFF',
+                      font=("Consolas", 9), padx=8, pady=4)
         label.pack()
-        
-        # Position tooltip below cursor
-        self.tip_window.geometry(f"+{x-500}+{y+15}")
+
+        # Position tooltip to the left and below cursor
+        self.tip_window.geometry(f"+{x-400}+{y+18}")
         self.tip_window.deiconify()
 
     def hide_tip(self):
-        """Hide the tooltip"""
+        """Hide the tooltip and cancel any scheduled show"""
+        if self.scheduled_id:
+            try:
+                self.parent.after_cancel(self.scheduled_id)
+            except Exception:
+                pass
+            self.scheduled_id = None
         if self.tip_window:
-            self.tip_window.destroy()
+            try:
+                self.tip_window.destroy()
+            except Exception:
+                pass
             self.tip_window = None
 
 
@@ -125,25 +137,31 @@ class PlaylistTabTreeView(ttk.Treeview):
 
         # Create tooltip for path column
         self.tooltip = Tooltip(self)
-        
+
         # Bind events for showing/hiding tooltip
         self.bind("<Motion>", self.on_motion)
-        self.bind("<Leave>", lambda event: self.tooltip.hide_tip())
+        self.bind("<Leave>", self._on_leave)
 
-        # Initialize scheduled tooltip attribute
-        self.scheduled_tooltip = None
+        # Initialize hover tracking
         self.hover_item = None
         self.hover_column = None
         self.hover_x = 0
         self.hover_y = 0
-        
+
         self.bind("<Button-1>", self._on_button_down)
         self.bind("<B1-Motion>", self._on_dragged)
         self.bind("<ButtonRelease-1>", self._on_button_up)
         self.bind("<Double-1>", self.callbacks["double_click"])
 
+    def _on_leave(self, event):
+        """Handle mouse leaving the treeview - hide tooltip."""
+        self.tooltip.hide_tip()
+        self.hover_item = None
+        self.hover_column = None
+
     def _on_button_down(self, event):
         """Handle button down - mark interaction and forward to callback."""
+        self.tooltip.hide_tip()  # Hide tooltip on click
         if "on_interaction" in self.callbacks:
             self.callbacks["on_interaction"](event)
         self.callbacks["button_down"](event)
@@ -160,45 +178,50 @@ class PlaylistTabTreeView(ttk.Treeview):
         
     def show_delayed_tooltip(self):
         """Show the tooltip after delay has passed"""
+        self.tooltip.scheduled_id = None  # Clear the scheduled id
         if self.hover_item and self.hover_column:
-            values = self.item(self.hover_item, 'values')
-            if len(values) > 6 and values[6]:  # Make sure path exists
-                # Show tooltip with full path
-                self.tooltip.show_tip(values[6], self.hover_x, self.hover_y)
-    
+            try:
+                values = self.item(self.hover_item, 'values')
+                if len(values) > 6 and values[6]:  # Make sure path exists
+                    self.tooltip.show_tip(values[6], self.hover_x, self.hover_y)
+            except Exception:
+                pass  # Item may no longer exist
+
     def on_motion(self, event):
         """Show tooltip when hovering over the path column after a delay"""
-        # Cancel any existing scheduled tooltip
-        if hasattr(self, 'scheduled_tooltip') and self.scheduled_tooltip:
-            self.after_cancel(self.scheduled_tooltip)
-            self.scheduled_tooltip = None
-        
-        # Hide any existing tooltip
+        # Hide any existing tooltip and cancel scheduled
         self.tooltip.hide_tip()
-        
+
         # Get the item and column under cursor
         item = self.identify_row(event.y)
         column = self.identify_column(event.x)
-        
+
         if not item or not column:
+            self.hover_item = None
+            self.hover_column = None
             return
-            
+
         # Get column index (columns are numbered #1, #2, etc.)
-        column_idx = int(column[1:]) - 1
-        
+        try:
+            column_idx = int(column[1:]) - 1
+        except (ValueError, IndexError):
+            return
+
         # Check if hovering over the Path column (index 6)
         if column_idx == 6:  # Path is the 7th column (index 6)
-            # Get the path value from the item
             values = self.item(item, 'values')
             if len(values) > 6 and values[6]:  # Make sure path exists
-                # Store current position and path for delayed tooltip
+                # Store current position for delayed tooltip
                 self.hover_item = item
                 self.hover_column = column
                 self.hover_x = event.x_root
                 self.hover_y = event.y_root
-                
-                # Schedule tooltip to appear after 500ms (half second)
-                self.scheduled_tooltip = self.after(500, self.show_delayed_tooltip)
+
+                # Schedule tooltip to appear after 400ms
+                self.tooltip.scheduled_id = self.after(400, self.show_delayed_tooltip)
+        else:
+            self.hover_item = None
+            self.hover_column = None
 
 
 class SearchFrame(Frame):
