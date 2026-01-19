@@ -345,7 +345,12 @@ class PlaylistTabView(ttk.Frame):
         self._apply_playlist_update(new_playlist)
 
     def _apply_playlist_update(self, new_playlist: Playlist):
-        """Apply a playlist update with diff-based UI update and state preservation."""
+        """Apply a playlist update with full UI refresh and state preservation.
+
+        Uses reload_rows() instead of diff-based updates to ensure:
+        - Times stay in sync (all tracks get recalculated start times)
+        - Artist intro dots are preserved (check_for_intros_and_exists is called)
+        """
         # Save current state
         selection = self.tree.selection()
         selected_paths = []
@@ -373,14 +378,15 @@ class PlaylistTabView(ttk.Frame):
         # This ensures times are calculated correctly instead of using raw server STARTTIME
         self.controller.playlist_service.create_day_start_times_playlist(new_playlist)
 
-        # Compute diff
-        diff = PlaylistDiff.compute(self.playlist.tracks, new_playlist.tracks)
+        # Check for intros and file existence (fixes artist dots disappearing after auto-reload)
+        self.controller.playlist_service.check_for_intros_and_exists(new_playlist)
 
-        if diff.is_identical:
-            return
+        # Update the playlist tracks
+        self.playlist.tracks = list(new_playlist.tracks)
 
-        # Apply diff
-        self.apply_diff(diff, new_playlist.tracks)
+        # Full UI refresh (reliable sync for times and intro dots)
+        # Using reload_rows() instead of diff-based update ensures UI always matches model
+        self.reload_rows()
 
         # Restore scroll position
         self.tree.update_idletasks()
