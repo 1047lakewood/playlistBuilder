@@ -18,6 +18,8 @@ class PlaylistTabContextMenu:
         self.context_menu.add_command(label="Open in Audacity", command=self.parent.controller.open_in_audacity)
         self.context_menu.add_command(label="Convert to MP3", command=self.parent.controller.controller_actions.convert_tracks_to_mp3)
         self.context_menu.add_separator()
+        self.context_menu.add_command(label="Search with Everything", command=self.parent.controller.search_with_everything)
+        self.context_menu.add_separator()
         self.context_menu.add_command(label="Rename File Path", command=self.parent.controller.controller_actions.rename_track_file_path_dialog)
         self.context_menu.add_command(label="Rename by Browsing", command=self.parent.controller.controller_actions.rename_track_by_browsing_dialog)
         self.context_menu.add_command(label="Replace from Macro Output", command=self.parent.controller.controller_actions.replace_from_macro_output_action)

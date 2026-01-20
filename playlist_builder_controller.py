@@ -184,7 +184,22 @@ class PlaylistBuilderController:
             messagebox.showerror("Error", "Please select only one track")
             return
         FileUtils.open_in_audacity(selected_tracks[0].path)
-        
+
+    def search_with_everything(self):
+        selected_tracks = self.get_selected_rows()[2]
+        if len(selected_tracks) != 1:
+            messagebox.showerror("Error", "Please select only one track")
+            return
+
+        import subprocess
+
+        # Extract just the filename from the full path
+        filename = os.path.basename(selected_tracks[0].path)
+
+        # Launch Everything with the search query
+        everything_path = r"C:\Program Files\Everything\Everything.exe"
+        subprocess.Popen([everything_path, "-search", filename])
+
     def handle_double_click(self, event):
         """Handle double-click on a track to open the prelisten view"""
         try:
