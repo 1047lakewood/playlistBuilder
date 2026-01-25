@@ -501,6 +501,7 @@ class PlaylistTabView(ttk.Frame):
         is_api_raw = self.check_for_no_large_play_time(playlist)
         if is_api_raw:
             pass
+        found_currently_playing = False
         for i, track in enumerate(tracks):
             rowNumber = i + 1
 
@@ -534,10 +535,11 @@ class PlaylistTabView(ttk.Frame):
             if not file_exists:
                 tags.append("missing_file")
             
-            # If this is the currently playing track, highlight it
-            if path == currently_playing_path:
+            # If this is the currently playing track, highlight it (only first match for duplicates)
+            if path == currently_playing_path and not found_currently_playing:
                 tags.append("currently_playing")
                 self.current_playing_track_id = item_id
+                found_currently_playing = True
                 
             self.tree.item(item_id, tags=tuple(tags))
 
