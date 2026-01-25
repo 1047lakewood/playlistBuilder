@@ -69,6 +69,8 @@ python -c "from playlist_builder_controller import PlaylistBuilderController"
 
 ## Claude Commands
 
+**Important**: After making any code changes, run the application with `python main.py` to verify the changes work correctly before committing.
+
 When the user says:
 
 ### "update"
@@ -80,17 +82,11 @@ When the user says:
    ```
 
 ### "deploy"
-1. **Import config** from deployment to dev:
-   ```bash
-   cp "C:/Users/Admin/Desktop/Work/Playlist Builder 2/config.json" "G:/Misc/Dev/playlistBuilder/config.json"
-   ```
-2. **Copy code** to deployment directory:
-   ```bash
-   cd "G:/Misc/Dev/playlistBuilder"
-   cp -f *.py "C:/Users/Admin/Desktop/Work/Playlist Builder 2/"
-   cp -rf models "C:/Users/Admin/Desktop/Work/Playlist Builder 2/"
-   cp -rf PlaylistService "C:/Users/Admin/Desktop/Work/Playlist Builder 2/"
-   ```
+Run the deploy script:
+```bash
+powershell.exe -Command "& 'G:\Misc\Dev\playlistBuilder\deploy.bat' nopause"
+```
+This imports config.json from deployment and copies all code to the deployment directory.
 
 ### "update and deploy"
 Run both commands in sequence.

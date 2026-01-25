@@ -1,2 +1,2 @@
-VERSION = "0.7.14"
+VERSION = "0.7.15"
 APP_NAME = "Playlist Builder"
