@@ -905,9 +905,9 @@ class PlaylistTabView(ttk.Frame):
                 self.controller.notify_currently_playing(None, self, False)
                 return
             
-            # Get the current track from the API
-            current_track = manager.get_current_track()
-            if not current_track:
+            # Get the position of the currently playing track from the API
+            current_track_pos = manager.get_current_track_pos()
+            if current_track_pos is None:
                 if self.current_playing_track_id:
                     try:
                         current_tags = list(self.tree.item(self.current_playing_track_id, 'tags'))
@@ -920,14 +920,14 @@ class PlaylistTabView(ttk.Frame):
                 self.controller.notify_currently_playing(None, self, False)
                 return
 
-            # Find the track in the tree view
+            # Find the track in the tree view by position (handles duplicates correctly)
             found_item_id = None
-            for item_id in self.tree.get_children():
-                values = self.tree.item(item_id, 'values')
-                path = values[6] if len(values) > 6 else ""
-                if path == current_track.path:
-                    found_item_id = item_id
-                    break
+            current_track = None
+            children = self.tree.get_children()
+            if 0 <= current_track_pos < len(children):
+                found_item_id = children[current_track_pos]
+                if 0 <= current_track_pos < len(self.playlist.tracks):
+                    current_track = self.playlist.tracks[current_track_pos]
 
             # If the currently playing track changed, update the highlighting
             if found_item_id != self.current_playing_track_id:

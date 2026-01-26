@@ -193,8 +193,8 @@ class PlaylistBuilderController:
 
         import subprocess
 
-        # Extract just the filename from the full path
-        filename = os.path.basename(selected_tracks[0].path)
+        # Extract just the filename from the full path (without extension)
+        filename = os.path.splitext(os.path.basename(selected_tracks[0].path))[0]
 
         # Launch Everything with the search query
         everything_path = r"C:\Program Files\Everything\Everything.exe"
