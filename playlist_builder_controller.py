@@ -234,13 +234,14 @@ class PlaylistBuilderController:
             print(f"Error toggling search: {str(e)}")
             messagebox.showerror("Error", f"Failed to toggle search: {str(e)}")
 
-    def notify_currently_playing(self, track, tab_view, can_focus):
+    def notify_currently_playing(self, track, tab_view, can_focus, track_position=None):
         """Update the top bar with currently playing information.
 
         Args:
             track: Track instance or None.
             tab_view: PlaylistTabView where the track resides.
             can_focus: Whether we can scroll to the track.
+            track_position: Optional position (index) of the track in the playlist.
         """
         # Get source info from the tab's playlist
         source_id = getattr(tab_view.playlist, 'source_id', None) if tab_view else None
@@ -260,18 +261,18 @@ class PlaylistBuilderController:
         bar_text = f"Currently Playing: {display_text}"
 
         if can_focus and track.path:
-            context = {"tab": tab_view, "track_path": track.path}
+            context = {"tab": tab_view, "track_path": track.path, "track_position": track_position}
             if source_id:
                 self._currently_playing_contexts[source_id] = context
             self.container_view.update_currently_playing_bar(
-                bar_text, 
-                clickable=True, 
+                bar_text,
+                clickable=True,
                 on_click=lambda sid=source_id: self.scroll_to_currently_playing(sid),
                 source_id=source_id,
                 source_name=source_name
             )
         else:
-            context = {"tab": tab_view, "track_path": track.path if track.path else None}
+            context = {"tab": tab_view, "track_path": track.path if track.path else None, "track_position": track_position}
             if source_id:
                 self._currently_playing_contexts[source_id] = context
             self.container_view.update_currently_playing_bar(
@@ -292,34 +293,46 @@ class PlaylistBuilderController:
 
     def scroll_to_currently_playing(self, source_id=None, event=None):
         """Focus the tree on the currently playing track.
-        
+
         Args:
             source_id: The source to scroll to. If None, uses the first available context.
         """
+        print(f"[DEBUG] scroll_to_currently_playing called with source_id={source_id}")
+        print(f"[DEBUG] Available contexts: {list(self._currently_playing_contexts.keys())}")
+
         # Get the context for this source
         if source_id and source_id in self._currently_playing_contexts:
             context = self._currently_playing_contexts[source_id]
+            print(f"[DEBUG] Found context for source_id={source_id}")
         elif self._currently_playing_contexts:
             # Fallback to first available
             context = next(iter(self._currently_playing_contexts.values()))
+            print(f"[DEBUG] Using fallback context (first available)")
         else:
+            print(f"[DEBUG] No contexts available, returning")
             return
 
         track_path = context.get("track_path")
+        track_position = context.get("track_position")
+        print(f"[DEBUG] track_path={track_path}, track_position={track_position}")
+
         if not track_path:
+            print(f"[DEBUG] No track_path, returning")
             return
 
         tab_view = context.get("tab")
         tab_view = self._resolve_tab_for_track(tab_view, track_path)
         if not tab_view:
+            print(f"[DEBUG] Could not resolve tab, returning")
             return
 
         try:
             self.notebook_view.notebook.select(tab_view)
-        except Exception:
-            pass
+            print(f"[DEBUG] Selected tab: {tab_view.title}")
+        except Exception as e:
+            print(f"[DEBUG] Error selecting tab: {e}")
 
-        tab_view.scroll_to_track(track_path)
+        tab_view.scroll_to_track(track_path, position=track_position)
 
     def _resolve_tab_for_track(self, tab_view, track_path):
         """Ensure we have a valid tab reference for a track path."""

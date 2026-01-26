@@ -73,9 +73,9 @@ class TreeInteractionController:
         playlist.remove_tracks(tracks)
         self.reload_rows_in_selected_tab_without_intro_check()
         if playlist.type == Playlist.PlaylistType.API:
-            #self.controller.playlist_service.api_manager.remove_tracks([self.controller.get_selected_rows()[1][0]])
-            
-            self.controller.playlist_service.api_manager.remove_tracks([i + 1 for i in  track_indices])
+            manager = self.controller.playlist_service.get_api_manager_for_playlist(playlist)
+            if manager:
+                manager.remove_tracks([i + 1 for i in track_indices])
 
         
     def paste_tracks(self, event=None):
@@ -89,13 +89,17 @@ class TreeInteractionController:
         self.reload_rows_in_selected_tab_without_intro_check()
         self.select_row_at_index([i for i in range(paste_index, paste_index + len(new_tracks))])
         if playlist.type == Playlist.PlaylistType.API:
-            self.controller.playlist_service.api_manager.insert_tracks(new_tracks, paste_index + 1)
+            manager = self.controller.playlist_service.get_api_manager_for_playlist(playlist)
+            if manager:
+                manager.insert_tracks(new_tracks, paste_index + 1)
     def move_tracks(self, from_index, to_index):
         playlist = self.controller.get_selected_tab_playlist()
         playlist.move_tracks(from_index, to_index)
         self.reload_rows_in_selected_tab_without_intro_check()
         if playlist.type == Playlist.PlaylistType.API:
-            self.controller.playlist_service.api_manager.move_tracks([i + 1 for i in from_index], to_index + 1)
+            manager = self.controller.playlist_service.get_api_manager_for_playlist(playlist)
+            if manager:
+                manager.move_tracks([i + 1 for i in from_index], to_index + 1)
     
     def hover_with_files(self, event):
         self.select_row_at_index([self.current_row_under_mouse_index(event)])
@@ -132,7 +136,9 @@ class TreeInteractionController:
 
         self.reload_rows_in_selected_tab_without_intro_check()
         if playlist.type == Playlist.PlaylistType.API:
-            self.controller.playlist_service.api_manager.insert_tracks(tracks, row_index + 1)
+            manager = self.controller.playlist_service.get_api_manager_for_playlist(playlist)
+            if manager:
+                manager.insert_tracks(tracks, row_index + 1)
         self.select_row_at_index([i for i in range(row_index, row_index + len(files))])
     
     def reload_rows_in_selected_tab_without_intro_check(self):

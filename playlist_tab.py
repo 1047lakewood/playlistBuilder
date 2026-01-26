@@ -951,9 +951,9 @@ class PlaylistTabView(ttk.Frame):
                 self.current_playing_track_id = found_item_id
 
             if not found_item_id:
-                self.controller.notify_currently_playing(current_track, self, False)
+                self.controller.notify_currently_playing(current_track, self, False, track_position=current_track_pos)
             else:
-                self.controller.notify_currently_playing(current_track, self, True)
+                self.controller.notify_currently_playing(current_track, self, True, track_position=current_track_pos)
         except Exception as e:
             print(f"Error updating current playing track: {str(e)}")
             self.controller.notify_currently_playing(None, self, False)
@@ -965,48 +965,82 @@ class PlaylistTabView(ttk.Frame):
             # Schedule the next update
             self._currently_playing_job = self.after(2000, self.periodic_update_current_playing_track)
 
-    def scroll_to_track(self, track_path):
-        """Scroll to and focus the first tree item matching the track path."""
+    def scroll_to_track(self, track_path, position=None):
+        """Scroll to and focus a tree item.
+
+        Args:
+            track_path: The path of the track to scroll to.
+            position: Optional position (index) for direct lookup. If provided and valid,
+                      uses position-based lookup instead of path search (handles duplicates correctly).
+        """
+        print(f"[DEBUG] scroll_to_track called: track_path={track_path}, position={position}")
+
         if not track_path:
+            print(f"[DEBUG] No track_path, returning")
             return
 
-        for item_id in self.tree.get_children():
+        children = self.tree.get_children()
+        print(f"[DEBUG] Tree has {len(children)} children")
+
+        # If position is provided and valid, use direct index lookup
+        if position is not None and 0 <= position < len(children):
+            item_id = children[position]
+            # Verify the path matches (sanity check)
+            values = self.tree.item(item_id, 'values')
+            path = values[6] if len(values) > 6 else ""
+            print(f"[DEBUG] Position-based lookup: position={position}, path_at_position={path}")
+            if path == track_path:
+                print(f"[DEBUG] Path matches! Scrolling to item via position")
+                self._scroll_to_item(item_id)
+                return
+            else:
+                print(f"[DEBUG] Path mismatch! Expected={track_path}, Got={path}. Falling back to path search.")
+
+        # Fallback to path-based search (finds first match)
+        for item_id in children:
             values = self.tree.item(item_id, 'values')
             path = values[6] if len(values) > 6 else ""
             if path == track_path:
-                try:
-                    self.tree.see(item_id)
-                    self.tree.focus(item_id)
-
-                    # Attempt to center the item within the viewport for better context
-                    self.tree.update_idletasks()
-
-                    total_items = len(self.tree.get_children())
-                    if total_items <= 0:
-                        return
-
-                    try:
-                        row_bbox = self.tree.bbox(item_id)
-                    except Exception:
-                        row_bbox = None
-
-                    row_height = row_bbox[3] if row_bbox else 0
-                    if row_height <= 0:
-                        # Fallback if bbox failed (e.g., themed widgets sometimes return None)
-                        row_height = 24
-
-                    widget_height = max(1, self.tree.winfo_height())
-                    visible_rows = max(1, widget_height // row_height)
-
-                    item_index = self.tree.index(item_id)
-                    top_index = max(0, min(total_items - visible_rows, item_index - visible_rows // 2))
-
-                    if total_items > 0:
-                        fraction = top_index / total_items
-                        self.tree.yview_moveto(fraction)
-                except Exception:
-                    pass
+                print(f"[DEBUG] Path search found match at item_id={item_id}")
+                self._scroll_to_item(item_id)
                 return
+
+        print(f"[DEBUG] Path search found NO match for track_path={track_path}")
+
+    def _scroll_to_item(self, item_id):
+        """Scroll to and focus a specific tree item by its ID."""
+        try:
+            self.tree.see(item_id)
+            self.tree.focus(item_id)
+
+            # Attempt to center the item within the viewport for better context
+            self.tree.update_idletasks()
+
+            total_items = len(self.tree.get_children())
+            if total_items <= 0:
+                return
+
+            try:
+                row_bbox = self.tree.bbox(item_id)
+            except Exception:
+                row_bbox = None
+
+            row_height = row_bbox[3] if row_bbox else 0
+            if row_height <= 0:
+                # Fallback if bbox failed (e.g., themed widgets sometimes return None)
+                row_height = 24
+
+            widget_height = max(1, self.tree.winfo_height())
+            visible_rows = max(1, widget_height // row_height)
+
+            item_index = self.tree.index(item_id)
+            top_index = max(0, min(total_items - visible_rows, item_index - visible_rows // 2))
+
+            if total_items > 0:
+                fraction = top_index / total_items
+                self.tree.yview_moveto(fraction)
+        except Exception:
+            pass
     
     def refresh_theme_colors(self):
         """Refresh theme colors for this tab's widgets."""
