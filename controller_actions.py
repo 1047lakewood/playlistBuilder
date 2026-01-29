@@ -824,6 +824,11 @@ class ControllerActions():
             track.path = new_path
             if not track.title.endswith(" AM"):
                 track.title = f"{track.title} AM"
+            # Write the updated title to file metadata
+            try:
+                TrackUtils.change_track_metadata(track, track.artist, track.title)
+            except Exception as e:
+                logging.warning(f"Could not update title metadata: {e}")
             self.controller.playlist_service.update_track_metadata([track])
             self.check_for_intros_and_if_exists(playlist=current_playlist, tracks=[track])
             self.reload_rows_in_selected_tab_without_intro_check()
