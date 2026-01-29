@@ -732,10 +732,11 @@ class ControllerActions():
             # Move the new file into place. shutil.move will overwrite if destination_path is identical to an existing file.
             shutil.move(source_file_path, destination_path)
 
-            # Verify the file arrived at destination before cleanup
-            if not os.path.exists(destination_path):
+            # Verify the file arrived at destination before any cleanup
+            # Check both existence and that file has content (not empty/corrupt)
+            if not os.path.exists(destination_path) or os.path.getsize(destination_path) == 0:
                 messagebox.showerror("Error",
-                    f"Move operation failed: file not found at destination.\n\n"
+                    f"Move operation failed: file not found or empty at destination.\n\n"
                     f"Source: {source_file_path}\n"
                     f"Destination: {destination_path}",
                     parent=self.controller.root)
@@ -744,8 +745,11 @@ class ControllerActions():
             # If the new file's path (destination_path) is different from the original track's path
             # (e.g., different extension), and the original file still exists, remove the original file.
             # Use os.path.normcase for case-insensitive comparison on Windows (where .mp3 and .MP3 are the same file)
+            # Only delete if we're 100% sure the new file is in place
             if os.path.normcase(destination_path) != os.path.normcase(original_track_path_before_move) and os.path.exists(original_track_path_before_move):
-                os.remove(original_track_path_before_move)
+                # Final safety check: destination must exist before we delete anything
+                if os.path.exists(destination_path):
+                    os.remove(original_track_path_before_move)
             # If the macro-output folder is empty after moving the file, delete the folder
             if not os.listdir(macro_output_dir):
                 os.rmdir(macro_output_dir)
@@ -769,3 +773,61 @@ class ControllerActions():
 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to replace file: {e}", parent=self.controller.root)
+
+    def add_am_to_filename_action(self, event=None):
+        """Add ' AM' suffix to the filename (before extension) and to the track title."""
+        selected_tracks = self.get_selected_tracks()
+        if not selected_tracks:
+            messagebox.showinfo("Add AM", "No track selected.", parent=self.controller.root)
+            return
+        if len(selected_tracks) > 1:
+            messagebox.showerror("Error", "Please select only one track.", parent=self.controller.root)
+            return
+
+        track = selected_tracks[0]
+        current_playlist = self.get_selected_tab_playlist()
+        track_index = current_playlist.tracks.index(track)
+
+        original_path = track.path
+        directory = os.path.dirname(original_path)
+        filename = os.path.basename(original_path)
+        name, ext = os.path.splitext(filename)
+
+        # Check if already ends with " AM"
+        if name.endswith(" AM"):
+            messagebox.showinfo("Add AM", "Filename already ends with ' AM'.", parent=self.controller.root)
+            return
+
+        new_filename = f"{name} AM{ext}"
+        new_path = os.path.join(directory, new_filename)
+
+        # Check if file exists
+        if not os.path.isfile(original_path):
+            # File doesn't exist, just update the path and title
+            track.path = new_path
+            if not track.title.endswith(" AM"):
+                track.title = f"{track.title} AM"
+            self.controller.playlist_service.update_track_metadata([track])
+            self.check_for_intros_and_if_exists(playlist=current_playlist, tracks=[track])
+            self.reload_rows_in_selected_tab_without_intro_check()
+            if current_playlist.type == Playlist.PlaylistType.API:
+                self.remove_and_reinsert_track(track, track_index)
+            return
+
+        # Check if destination already exists
+        if os.path.exists(new_path):
+            messagebox.showerror("Error", f"File already exists:\n{new_path}", parent=self.controller.root)
+            return
+
+        try:
+            os.rename(original_path, new_path)
+            track.path = new_path
+            if not track.title.endswith(" AM"):
+                track.title = f"{track.title} AM"
+            self.controller.playlist_service.update_track_metadata([track])
+            self.check_for_intros_and_if_exists(playlist=current_playlist, tracks=[track])
+            self.reload_rows_in_selected_tab_without_intro_check()
+            if current_playlist.type == Playlist.PlaylistType.API:
+                self.remove_and_reinsert_track(track, track_index)
+        except OSError as e:
+            messagebox.showerror("Error", f"Failed to rename file:\n{e}", parent=self.controller.root)

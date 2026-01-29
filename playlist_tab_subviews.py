@@ -23,6 +23,7 @@ class PlaylistTabContextMenu:
         self.context_menu.add_command(label="Rename File Path", command=self.parent.controller.controller_actions.rename_track_file_path_dialog)
         self.context_menu.add_command(label="Rename by Browsing", command=self.parent.controller.controller_actions.rename_track_by_browsing_dialog)
         self.context_menu.add_command(label="Replace from Macro Output", command=self.parent.controller.controller_actions.replace_from_macro_output_action)
+        self.context_menu.add_command(label="Add AM to Filename", command=self.parent.controller.controller_actions.add_am_to_filename_action)
         self.context_menu.add_separator()
         self.context_menu.add_command(label="Reload Remote Playlist", command=self.parent.controller.controller_actions.reload_api_playlist_action)
         self.context_menu.add_separator()
