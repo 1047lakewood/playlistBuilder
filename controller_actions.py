@@ -732,9 +732,19 @@ class ControllerActions():
             # Move the new file into place. shutil.move will overwrite if destination_path is identical to an existing file.
             shutil.move(source_file_path, destination_path)
 
+            # Verify the file arrived at destination before cleanup
+            if not os.path.exists(destination_path):
+                messagebox.showerror("Error",
+                    f"Move operation failed: file not found at destination.\n\n"
+                    f"Source: {source_file_path}\n"
+                    f"Destination: {destination_path}",
+                    parent=self.controller.root)
+                return
+
             # If the new file's path (destination_path) is different from the original track's path
             # (e.g., different extension), and the original file still exists, remove the original file.
-            if destination_path != original_track_path_before_move and os.path.exists(original_track_path_before_move):
+            # Use os.path.normcase for case-insensitive comparison on Windows (where .mp3 and .MP3 are the same file)
+            if os.path.normcase(destination_path) != os.path.normcase(original_track_path_before_move) and os.path.exists(original_track_path_before_move):
                 os.remove(original_track_path_before_move)
             # If the macro-output folder is empty after moving the file, delete the folder
             if not os.listdir(macro_output_dir):
