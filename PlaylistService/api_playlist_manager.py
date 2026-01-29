@@ -306,8 +306,8 @@ class ApiPlaylistManager:
                     duration=duration
                 )
                 track.play_time = self.time_str_to_seconds(data['STARTTIME'])
-                # If server didn't provide metadata, try reading from file
-                if not track.artist and not track.title:
+                # If server didn't provide metadata or duration, try reading from file
+                if not track.artist and not track.title or not track.duration:
                     TrackUtils.update_track_metadata(track)
                 playlist.tracks.append(track)
         else:
