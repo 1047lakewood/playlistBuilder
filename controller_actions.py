@@ -714,6 +714,50 @@ class ControllerActions():
             messagebox.showerror("Error", "Please select only one track")
         self.dialog_open = False
 
+    def _show_waiting_feedback(self, message="Waiting for file to finish writing..."):
+        """Show non-modal waiting feedback."""
+        self.controller.root.config(cursor="watch")
+        # Create a small floating label at top of window
+        if not hasattr(self, '_waiting_label') or self._waiting_label is None:
+            self._waiting_label = tk.Label(
+                self.controller.root,
+                text=message,
+                bg="#fff3cd",  # Yellow warning color
+                fg="#856404",
+                font=("Segoe UI", 10),
+                padx=10, pady=5
+            )
+            self._waiting_label.place(relx=0.5, y=5, anchor="n")
+
+    def _hide_waiting_feedback(self):
+        """Hide waiting feedback."""
+        self.controller.root.config(cursor="")
+        if hasattr(self, '_waiting_label') and self._waiting_label:
+            self._waiting_label.destroy()
+            self._waiting_label = None
+
+    def _wait_for_file_stable(self, file_path, on_stable_callback, last_size=None, stable_count=0):
+        """Wait for file to stop growing before proceeding."""
+        try:
+            current_size = os.path.getsize(file_path)
+        except OSError:
+            # File disappeared or inaccessible
+            self._hide_waiting_feedback()
+            return
+
+        if last_size is not None and current_size == last_size:
+            stable_count += 1
+            if stable_count >= 2:  # Stable for 1 second (2 x 500ms)
+                self._hide_waiting_feedback()
+                on_stable_callback()
+                return
+        else:
+            stable_count = 0  # Reset if size changed
+
+        # Schedule next check
+        self.controller.root.after(500, lambda: self._wait_for_file_stable(
+            file_path, on_stable_callback, current_size, stable_count))
+
     def replace_from_macro_output_action(self, event=None):
         selected_tracks = self.get_selected_tracks()
         if not selected_tracks:
@@ -743,17 +787,31 @@ class ControllerActions():
                 if macro_file_basename_no_ext == track_filename_no_ext:
                     found_file_in_macro = item_in_macro_dir
                     break
-        
+
         if not found_file_in_macro:
-            messagebox.showinfo("Replace from Macro Output", 
-                                f"No file matching '{track_filename_no_ext}.*' found in '{macro_output_dir}'.", 
+            messagebox.showinfo("Replace from Macro Output",
+                                f"No file matching '{track_filename_no_ext}.*' found in '{macro_output_dir}'.",
                                 parent=self.controller.root)
             return
 
         source_file_path = os.path.join(macro_output_dir, found_file_in_macro)
+
+        # Start file stability check before proceeding
+        def do_replacement():
+            self._do_replace_from_macro_output(
+                source_file_path, track, track_dir, found_file_in_macro,
+                current_playlist, track_index
+            )
+
+        self._show_waiting_feedback()
+        self._wait_for_file_stable(source_file_path, do_replacement)
+
+    def _do_replace_from_macro_output(self, source_file_path, track, track_dir, found_file_in_macro, current_playlist, track_index):
+        """Perform the actual file replacement after stability check."""
+        macro_output_dir = os.path.dirname(source_file_path)
         # The destination path will be the original track's directory, but with the new filename (which might have a new extension)
         destination_path = os.path.join(track_dir, found_file_in_macro)
-        original_track_path_before_move = track.path # Store original path
+        original_track_path_before_move = track.path  # Store original path
 
         try:
             # Move the new file into place. shutil.move will overwrite if destination_path is identical to an existing file.
@@ -780,14 +838,14 @@ class ControllerActions():
             # If the macro-output folder is empty after moving the file, delete the folder
             if not os.listdir(macro_output_dir):
                 os.rmdir(macro_output_dir)
-            
+
             messagebox.showinfo("Success", f"Track '{os.path.basename(original_track_path_before_move)}' replaced with '{found_file_in_macro}'.", parent=self.controller.root)
 
             path_changed = False
             if destination_path != original_track_path_before_move:
                 track.path = destination_path
                 path_changed = True
-            
+
             # Re-check metadata and existence for the track
             self.check_for_intros_and_if_exists(playlist=current_playlist, tracks=[track])
             self.reload_rows_in_selected_tab_without_intro_check()
@@ -798,7 +856,7 @@ class ControllerActions():
                 self.get_selected_tab().register_renamed_path(original_track_path_before_move, destination_path)
                 # This might need adjustment if the track identity relies on path heavily in API sync
                 # For now, assume re-inserting with new path is okay
-                self.remove_and_reinsert_track(track, track_index) # remove_and_reinsert_track might need to be more robust or a different method used
+                self.remove_and_reinsert_track(track, track_index)  # remove_and_reinsert_track might need to be more robust or a different method used
 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to replace file: {e}", parent=self.controller.root)
