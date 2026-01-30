@@ -371,16 +371,25 @@ class TrackUtils:
 
     @staticmethod
     def update_current_track_play_time(playlist, current_track):
-
-
         # Get current day of week (0=Monday, 6=Sunday in Python's weekday())
         # Convert to our mapping where 0=Sunday
-        python_weekday = datetime.datetime.now().weekday()  # 0=Monday, 6=Sunday
+        now = datetime.datetime.now()
+        python_weekday = now.weekday()  # 0=Monday, 6=Sunday
         day_multiplier = (python_weekday + 1) % 7  # Convert to 0=Sunday, 1=Monday, etc.
+
+        # Calculate current time of day in seconds since midnight
+        current_seconds_in_day = now.hour * 3600 + now.minute * 60 + now.second
+
         seconds_in_day = 86400
-        elapsed_seconds_in_week = day_multiplier * seconds_in_day
-        # Update play_time: current play_time * day_of_week_multiplier
+
         if current_track.play_time is not None:
+            # If track's time-of-day is greater than current time-of-day,
+            # the track must have started yesterday (e.g., started at 11:55 PM,
+            # now it's 12:05 AM)
+            if current_track.play_time > current_seconds_in_day:
+                day_multiplier = (day_multiplier - 1) % 7  # Go back one day (wraps Sun->Sat)
+
+            elapsed_seconds_in_week = day_multiplier * seconds_in_day
             current_track.play_time = elapsed_seconds_in_week + current_track.play_time
         else:
             return current_track
