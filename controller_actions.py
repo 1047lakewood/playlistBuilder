@@ -1,3 +1,4 @@
+import tkinter as tk
 from tkinter import filedialog, simpledialog, messagebox
 from unittest import result
 from models import playlist
@@ -17,6 +18,28 @@ from audio_converter import AudioConverter
 import shutil
 import app_config
 import logging
+
+
+class WideAskStringDialog(simpledialog.Dialog):
+    """A wider version of simpledialog.askstring for long file paths."""
+
+    def __init__(self, parent, title, prompt, initialvalue=""):
+        self.prompt = prompt
+        self.initialvalue = initialvalue
+        self.result = None
+        super().__init__(parent, title)
+
+    def body(self, master):
+        tk.Label(master, text=self.prompt).grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        self.entry = tk.Entry(master, width=100)
+        self.entry.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
+        self.entry.insert(0, self.initialvalue)
+        self.entry.select_range(0, tk.END)
+        master.columnconfigure(0, weight=1)
+        return self.entry
+
+    def apply(self):
+        self.result = self.entry.get()
 
 
 class ControllerActions():
@@ -305,9 +328,9 @@ class ControllerActions():
         current_playlist = self.get_selected_tab_playlist()
         track_index = current_playlist.tracks.index(track)
 
-        new_path_input = simpledialog.askstring("Rename File Path", "Enter new file path:",
-                                              parent=self.controller.root,
-                                              initialvalue=track.path)
+        dialog = WideAskStringDialog(self.controller.root, "Rename File Path",
+                                      "Enter new file path:", initialvalue=track.path)
+        new_path_input = dialog.result
         
         if new_path_input and new_path_input != track.path:
             normalized_new_path = os.path.normpath(new_path_input)
@@ -381,6 +404,8 @@ class ControllerActions():
                 self.check_for_intros_and_if_exists(playlist=current_playlist, tracks=[track])
                 self.reload_rows_in_selected_tab_without_intro_check()
                 if current_playlist.type == Playlist.PlaylistType.API:
+                    # Register renamed path so auto-reload won't mark it as missing
+                    self.get_selected_tab().register_renamed_path(original_path, path_to_update_track_with)
                     self.remove_and_reinsert_track(track, track_index)
                 self.controller.mark_profile_dirty()
             
@@ -769,6 +794,8 @@ class ControllerActions():
 
             # If it's an Remote Playlist and path changed, need to update there too
             if current_playlist.type == Playlist.PlaylistType.API and path_changed:
+                # Register renamed path so auto-reload won't mark it as missing
+                self.get_selected_tab().register_renamed_path(original_track_path_before_move, destination_path)
                 # This might need adjustment if the track identity relies on path heavily in API sync
                 # For now, assume re-inserting with new path is okay
                 self.remove_and_reinsert_track(track, track_index) # remove_and_reinsert_track might need to be more robust or a different method used
@@ -835,6 +862,8 @@ class ControllerActions():
             self.check_for_intros_and_if_exists(playlist=current_playlist, tracks=[track])
             self.reload_rows_in_selected_tab_without_intro_check()
             if current_playlist.type == Playlist.PlaylistType.API:
+                # Register renamed path so auto-reload won't mark it as missing
+                self.get_selected_tab().register_renamed_path(original_path, new_path)
                 self.remove_and_reinsert_track(track, track_index)
         except OSError as e:
             messagebox.showerror("Error", f"Failed to rename file:\n{e}", parent=self.controller.root)

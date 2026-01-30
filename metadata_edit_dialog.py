@@ -196,20 +196,25 @@ class MetadataEditDialog(simpledialog.Dialog):
             return "break"
 
     def _select_first_match(self, event):
-        """Select the first match when Enter is pressed in entry."""
+        """Select the first match when Enter is pressed in entry, then close dialog."""
         if self._filtered_artists:
             self.artist_var.set(self._filtered_artists[0])
-            self._update_suggestions()
+        self.ok()  # Close dialog and trigger apply()
         return "break"
 
     def _on_listbox_select(self, event):
-        """Handle selection from the listbox (double-click or Enter)."""
+        """Handle selection from the listbox (click or Enter)."""
         sel = self.artist_listbox.curselection()
         if sel:
             artist = self.artist_listbox.get(sel[0])
             self.artist_var.set(artist)
-            self.artist_entry.focus_set()
-            self._update_suggestions()
+        # Close dialog if triggered by Enter key
+        if event.keysym == "Return":
+            self.ok()
+            return "break"
+        # For mouse click, just update and return focus to entry
+        self.artist_entry.focus_set()
+        self._update_suggestions()
 
     def _load_intro_artists(self):
         """Scan intros directory once and build a sorted list of unique artist names"""

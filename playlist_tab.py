@@ -35,6 +35,11 @@ class PlaylistTabView(ttk.Frame):
         self._interaction_timeout_job = None
         self._auto_reload_enabled = False
 
+        # Track recently renamed files: old_path -> new_path
+        # This prevents auto-reload from marking renamed files as "missing"
+        # until the server syncs with the new filename
+        self._renamed_paths: dict[str, str] = {}
+
         self.drop_target_register(DND_FILES)
         self.dnd_bind('<<Drop>>', self.callbacks["drop_files_in_tab"])
         self.dnd_bind('<<DropPosition>>', self.callbacks["hover_with_files"])
@@ -374,6 +379,26 @@ class PlaylistTabView(ttk.Frame):
             except Exception:
                 pass
 
+        # Substitute renamed paths before existence check
+        # This prevents tracks from showing as "missing" (red) when the file was
+        # renamed locally but the server still has the old path
+        paths_to_clear = []
+        for track in new_playlist.tracks:
+            if track.path in self._renamed_paths:
+                new_path = self._renamed_paths[track.path]
+                if os.path.exists(new_path):
+                    # Server still has old path, use our renamed path
+                    track.path = new_path
+                    # Keep the mapping until server confirms
+            elif track.path in self._renamed_paths.values():
+                # Server now has the new path - clear the mapping
+                old_path = next(k for k, v in self._renamed_paths.items() if v == track.path)
+                paths_to_clear.append(old_path)
+
+        # Clear confirmed renames (server has synced to new path)
+        for old_path in paths_to_clear:
+            self._clear_renamed_path(old_path)
+
         # Calculate play times for the new playlist (same as initial load)
         # This ensures times are calculated correctly instead of using raw server STARTTIME
         self.controller.playlist_service.create_day_start_times_playlist(new_playlist)
@@ -430,6 +455,19 @@ class PlaylistTabView(ttk.Frame):
                     return
             except Exception:
                 pass
+
+    def register_renamed_path(self, old_path: str, new_path: str):
+        """Register a path rename so auto-reload won't mark it as missing.
+
+        When a file is renamed locally, the server still has the old path until
+        it syncs. This mapping allows auto-reload to substitute the new path
+        during existence checks.
+        """
+        self._renamed_paths[old_path] = new_path
+
+    def _clear_renamed_path(self, old_path: str):
+        """Clear a renamed path entry (called when server confirms new path)."""
+        self._renamed_paths.pop(old_path, None)
 
     def mark_user_interacting(self):
         """Mark that user is actively interacting with the view.
