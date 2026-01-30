@@ -89,6 +89,14 @@ class MenuBar(tk.Menu):
         
         self.add_cascade(label="Playlist", menu=playlist_menu)
 
+        # Tools Menu
+        tools_menu = tk.Menu(self, tearoff=0)
+        if "force_close_audacity" in self.callbacks:
+            tools_menu.add_command(label="Force Close Audacity", command=self.callbacks["force_close_audacity"])
+        if "close_all_explorer_windows" in self.callbacks:
+            tools_menu.add_command(label="Close All Explorer Windows", command=self.callbacks["close_all_explorer_windows"])
+        self.add_cascade(label="Tools", menu=tools_menu)
+
         # Help Menu
         help_menu = tk.Menu(self, tearoff=0)
         if "about" in self.callbacks:

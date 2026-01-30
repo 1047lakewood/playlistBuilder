@@ -34,7 +34,9 @@ class ControllerActions():
             "load_profile": self.controller.profile_loader.load_profile,
             "manage_profiles": self.controller.profile_loader.manage_profiles,
             "reload_api_playlist": self.reload_api_playlist_action,
-            "disconnect_all_remotes": self.disconnect_all_remotes
+            "disconnect_all_remotes": self.disconnect_all_remotes,
+            "force_close_audacity": self.force_close_audacity,
+            "close_all_explorer_windows": self.close_all_explorer_windows
         }
         self.clipboard = []
         self.dialog_open = False
@@ -836,3 +838,41 @@ class ControllerActions():
                 self.remove_and_reinsert_track(track, track_index)
         except OSError as e:
             messagebox.showerror("Error", f"Failed to rename file:\n{e}", parent=self.controller.root)
+
+    def force_close_audacity(self, event=None):
+        """Force close Audacity application."""
+        import subprocess
+        try:
+            # taskkill /F forces termination, /IM specifies image name
+            result = subprocess.run(
+                ['taskkill', '/F', '/IM', 'Audacity.exe'],
+                capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                print("Audacity closed successfully")
+            else:
+                # returncode 128 means process not found
+                print("Audacity not running or already closed")
+        except Exception as e:
+            print(f"Error closing Audacity: {e}")
+
+    def close_all_explorer_windows(self, event=None):
+        """Close all File Explorer windows without affecting taskbar/start menu."""
+        import subprocess
+        try:
+            # Use PowerShell with Shell.Application COM object to close only Explorer windows
+            # This does NOT kill explorer.exe (which would close taskbar/start menu)
+            ps_script = '''
+            $shell = New-Object -ComObject Shell.Application
+            $windows = $shell.Windows()
+            for ($i = $windows.Count - 1; $i -ge 0; $i--) {
+                $window = $windows.Item($i)
+                if ($window -ne $null) {
+                    $window.Quit()
+                }
+            }
+            '''
+            subprocess.run(['powershell', '-Command', ps_script], capture_output=True)
+            print("Explorer windows closed")
+        except Exception as e:
+            print(f"Error closing Explorer windows: {e}")
